@@ -1,14 +1,14 @@
 // Calculator sessions via the same-origin Pages Function at GET /firebase-sessions.
-// Firestore is queried server-side using a service account — no Firebase SDK or
-// Firebase auth needed in the browser.
+// Firestore is queried server-side using a service account — no Firebase SDK needed.
+// An MSAL ID token is required — only authenticated Mount Sinai users can read data.
 
-export const isFirebaseConfigured = true; // always available when deployed
+import { getAuthHeader } from './auth.js';
 
-/**
- * Fetch recent calculator sessions from Firestore (via Pages Function).
- */
+export const isFirebaseConfigured = true;
+
 export async function fetchCalculatorSessions({ limit = 200 } = {}) {
-  const res = await fetch(`/firebase-sessions?limit=${limit}`);
+  const headers = await getAuthHeader();
+  const res = await fetch(`/firebase-sessions?limit=${limit}`, { headers });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || `HTTP ${res.status}`);
