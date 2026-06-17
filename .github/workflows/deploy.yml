@@ -1,4 +1,4 @@
-name: Deploy to Cloudflare Pages
+name: Deploy to Cloudflare
 
 on:
   push:
@@ -33,7 +33,13 @@ jobs:
           VITE_AZURE_TENANT_ID:  ${{ secrets.VITE_AZURE_TENANT_ID }}
         run: npm run build
 
-      - name: Deploy to Cloudflare Pages
+      - name: Deploy REDCap proxy Worker
+        env:
+          CLOUDFLARE_API_TOKEN:  ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy --config worker/wrangler.toml
+
+      - name: Deploy dashboard to Cloudflare Pages
         env:
           CLOUDFLARE_API_TOKEN:  ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

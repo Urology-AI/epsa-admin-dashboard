@@ -1,0 +1,9 @@
+name = "epsa-redcap-proxy"
+main = "redcap-proxy.js"
+compatibility_date = "2026-06-17"
+
+# Secrets (set via `wrangler secret put --config worker/wrangler.toml`):
+#   REDCAP_TOKEN
+#   REDCAP_API_URL
+#   ALLOWED_ORIGIN
+#   DASHBOARD_SECRET
