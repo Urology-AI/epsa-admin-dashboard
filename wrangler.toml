@@ -1,7 +1,2 @@
-# Worker entry — used by Cloudflare Workers Git integration (`wrangler deploy`)
-name = "epsa-redcap-proxy"
-main = "worker/redcap-proxy.js"
-compatibility_date = "2026-06-17"
-
-# Pages output — used by Cloudflare Pages (`wrangler pages deploy`)
+name = "epsa-admin-dashboard"
 pages_build_output_dir = "dist"
