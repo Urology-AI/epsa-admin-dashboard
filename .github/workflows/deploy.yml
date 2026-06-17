@@ -1,4 +1,4 @@
-name: Deploy to Cloudflare Pages
+name: Deploy to Cloudflare
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: pages
+  group: deploy
   cancel-in-progress: false
 
 jobs:
@@ -25,16 +25,22 @@ jobs:
 
       - run: npm ci
 
-      - name: Build
+      - name: Build dashboard
         env:
-          VITE_TURSO_URL:                    ${{ secrets.VITE_TURSO_URL }}
-          VITE_TURSO_AUTH_TOKEN:             ${{ secrets.VITE_TURSO_AUTH_TOKEN }}
-          VITE_AZURE_CLIENT_ID:              ${{ secrets.VITE_AZURE_CLIENT_ID }}
-          VITE_AZURE_TENANT_ID:              ${{ secrets.VITE_AZURE_TENANT_ID }}
+          VITE_TURSO_URL:       ${{ secrets.VITE_TURSO_URL }}
+          VITE_TURSO_AUTH_TOKEN: ${{ secrets.VITE_TURSO_AUTH_TOKEN }}
+          VITE_AZURE_CLIENT_ID:  ${{ secrets.VITE_AZURE_CLIENT_ID }}
+          VITE_AZURE_TENANT_ID:  ${{ secrets.VITE_AZURE_TENANT_ID }}
         run: npm run build
 
-      - name: Deploy to Cloudflare Pages
+      - name: Deploy REDCap proxy Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx wrangler pages deploy dist --project-name=epsa-admin-dashboard --branch=main --env=""
+        run: npx wrangler deploy
+
+      - name: Deploy dashboard to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler pages deploy dist --project-name=epsa-admin-dashboard --branch=main
