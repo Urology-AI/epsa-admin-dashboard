@@ -1,0 +1,4 @@
+name = "epsa-admin-dashboard"
+pages_build_output_dir = "dist"
+
+[env.production]
