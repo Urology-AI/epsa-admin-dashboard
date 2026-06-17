@@ -1,5 +1,6 @@
-// All env vars for the unified dashboard.
-// Copy .env.example → .env.local and fill in values.
-
-export const TURSO_URL        = import.meta.env.VITE_TURSO_URL        || '';
-export const TURSO_AUTH_TOKEN = import.meta.env.VITE_TURSO_AUTH_TOKEN || '';
+// Browser-side env vars.
+// Turso and service-account credentials are server-side only (Cloudflare Pages env vars)
+// and are no longer exposed to the browser bundle.
+//
+// Only Azure AD vars are needed here (baked in at build time by Vite).
+// See .env.example for the full list of server-side vars to configure in Pages.

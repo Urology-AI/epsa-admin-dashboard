@@ -1,31 +1,31 @@
 /**
  * Cloudflare Pages Function — GET /records
  *
- * Reads all records from REDCap and returns them as JSON.
- * REDCAP_TOKEN and REDCAP_API_URL are set as Pages environment variables
- * (server-side only — never shipped to the browser).
+ * Exports all REDCap records as JSON.
+ * Requires a valid Microsoft MSAL ID token in Authorization header —
+ * only authenticated Mount Sinai users can read REDCap data.
  *
- * No auth header required from the dashboard: the function is same-origin,
- * so only users who loaded the dashboard (i.e. passed MSAL) can call it.
+ * Server-side env vars: AZURE_CLIENT_ID, AZURE_TENANT_ID, REDCAP_TOKEN, REDCAP_API_URL
  */
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Content-Type': 'application/json',
-};
+import { verifyMsalToken, unauthorized } from './_auth.js';
+
+const JSON_CT = { 'Content-Type': 'application/json' };
 
 export async function onRequestOptions() {
-  return new Response(null, { status: 204, headers: CORS });
+  return new Response(null, { status: 204 });
 }
 
-export async function onRequestGet({ env }) {
+export async function onRequestGet({ env, request }) {
+  const user = await verifyMsalToken(request.headers.get('Authorization'), env);
+  if (!user) return unauthorized();
+
   const token  = env.REDCAP_TOKEN;
   const apiUrl = env.REDCAP_API_URL;
 
   if (!token || !apiUrl) {
     return new Response(JSON.stringify({ error: 'REDCap not configured on server' }), {
-      status: 503, headers: CORS,
+      status: 503, headers: JSON_CT,
     });
   }
 
@@ -43,23 +43,23 @@ export async function onRequestGet({ env }) {
   let res;
   try {
     res = await fetch(apiUrl, {
-      method:  'POST',
-      body:    params,
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      method:   'POST',
+      body:     params,
+      headers:  { 'Content-Type': 'application/x-www-form-urlencoded' },
       redirect: 'error',
     });
   } catch (err) {
     return new Response(JSON.stringify({ error: 'Could not reach REDCap', detail: err?.message }), {
-      status: 502, headers: CORS,
+      status: 502, headers: JSON_CT,
     });
   }
 
   const text = await res.text();
   if (!res.ok) {
     return new Response(JSON.stringify({ error: `REDCap returned ${res.status}`, detail: text.slice(0, 200) }), {
-      status: 502, headers: CORS,
+      status: 502, headers: JSON_CT,
     });
   }
 
-  return new Response(text, { status: 200, headers: CORS });
+  return new Response(text, { status: 200, headers: JSON_CT });
 }
