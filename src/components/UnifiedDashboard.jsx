@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LogOut, LayoutDashboard, MonitorSmartphone, Calculator, Database } from 'lucide-react';
 import { isTursoConfigured, fetchScreeningSessions, fetchScreeningStats } from '../services/tursoService.js';
-import { isFirebaseConfigured, fetchCalculatorSessions } from '../services/firebaseService.js';
+import { fetchCalculatorSessions } from '../services/firebaseService.js';
 import { isRedcapConfigured, fetchRedcapRecords, fetchRedcapRecordIdSet } from '../services/redcapService.js';
 import OverviewTab    from './tabs/OverviewTab.jsx';
 import ScreeningTab   from './tabs/ScreeningTab.jsx';
@@ -27,6 +27,7 @@ export default function UnifiedDashboard({ onLogout }) {
   // Calculator (Firebase)
   const [calcSessions,   setCalcSessions]   = useState([]);
   const [calcLoading,    setCalcLoading]    = useState(false);
+  const [calcError,      setCalcError]      = useState(null);
 
   // REDCap
   const [redcapRecords,  setRedcapRecords]  = useState([]);
@@ -36,7 +37,7 @@ export default function UnifiedDashboard({ onLogout }) {
 
   const sources = {
     turso:    isTursoConfigured(),
-    firebase: isFirebaseConfigured,
+    firebase: true,
     redcap:   isRedcapConfigured(),
   };
 
@@ -58,12 +59,12 @@ export default function UnifiedDashboard({ onLogout }) {
   }, []);
 
   const loadCalculator = useCallback(async () => {
-    if (!isFirebaseConfigured) return;
     setCalcLoading(true);
+    setCalcError(null);
     try {
       setCalcSessions(await fetchCalculatorSessions());
     } catch (e) {
-      console.error('Calculator load error:', e);
+      setCalcError(e.message);
     } finally {
       setCalcLoading(false);
     }
@@ -138,6 +139,7 @@ export default function UnifiedDashboard({ onLogout }) {
           <CalculatorTab
             sessions={calcSessions}
             loading={calcLoading}
+            error={calcError}
             onRefresh={loadCalculator}
           />
         )}

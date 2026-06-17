@@ -1,7 +1,7 @@
 import React from 'react';
 import { RefreshCw } from 'lucide-react';
 
-export default function CalculatorTab({ sessions, loading, onRefresh }) {
+export default function CalculatorTab({ sessions, loading, error, onRefresh }) {
   const list = sessions ?? [];
 
   return (
@@ -15,8 +15,13 @@ export default function CalculatorTab({ sessions, loading, onRefresh }) {
 
       {loading ? (
         <div className="loading">Loading sessions…</div>
+      ) : error ? (
+        <div className="error-block">
+          <p>Could not load calculator sessions: {error}</p>
+          <p className="error-hint">Make sure <code>FIREBASE_SERVICE_ACCOUNT</code> is set as a Cloudflare Pages environment variable.</p>
+        </div>
       ) : list.length === 0 ? (
-        <div className="empty">No calculator sessions found. Make sure Firebase is configured.</div>
+        <div className="empty">No calculator sessions found.</div>
       ) : (
         <div className="table-wrap">
           <table className="data-table">
@@ -31,14 +36,15 @@ export default function CalculatorTab({ sessions, loading, onRefresh }) {
             </thead>
             <tbody>
               {list.map((s) => {
-                const created = s.createdAt?.toDate?.() ?? (s.createdAt ? new Date(s.createdAt) : null);
+                const ts = s.createdAt;
+                const created = ts ? new Date(typeof ts === 'string' ? ts : ts) : null;
                 return (
                   <tr key={s.id} className="session-row">
                     <td className="td-ref">{s.id}</td>
                     <td>{created ? created.toLocaleDateString() : '—'}</td>
                     <td>{s.status ?? '—'}</td>
-                    <td>{s.stage ?? (s.step2 ? 'post' : 'pre')}</td>
-                    <td>{s.preResult?.tierKey ?? s.engineResult?.tierKey ?? '—'}</td>
+                    <td>{s.step2 ? 'post-PSA' : 'pre-PSA'}</td>
+                    <td>{s.step1?.preResult?.tierKey ?? s.finalCategory ?? '—'}</td>
                   </tr>
                 );
               })}
