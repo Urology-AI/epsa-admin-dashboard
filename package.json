@@ -9,6 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@azure/msal-browser": "^5.14.0",
+    "@azure/msal-react": "^5.4.5",
     "@libsql/client": "^0.14.0",
     "firebase": "^10.12.0",
     "lucide-react": "^0.469.0",

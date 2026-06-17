@@ -1,0 +1,56 @@
+.msal-login-root {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+
+.msal-login-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2.5rem 2rem;
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+  box-shadow: var(--shadow);
+}
+
+.msal-login-icon {
+  color: var(--accent);
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.msal-login-title { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.25rem; }
+.msal-login-sub   { color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.75rem; }
+.msal-login-note  { color: var(--text-muted); font-size: 0.75rem; margin-top: 1rem; }
+
+.msal-login-error {
+  color: var(--red);
+  font-size: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+.msal-login-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.7rem 1.4rem;
+  background: #0078d4;
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  width: 100%;
+  justify-content: center;
+}
+.msal-login-btn:hover:not(:disabled) { background: #006cbe; }
+.msal-login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.ms-icon { width: 20px; height: 20px; flex-shrink: 0; }

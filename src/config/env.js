@@ -5,8 +5,6 @@ export const TURSO_URL        = import.meta.env.VITE_TURSO_URL        || '';
 export const TURSO_AUTH_TOKEN = import.meta.env.VITE_TURSO_AUTH_TOKEN || '';
 export const REDCAP_PROXY_URL = import.meta.env.VITE_REDCAP_PROXY_URL || '';
 export const DASHBOARD_SECRET = import.meta.env.VITE_DASHBOARD_SECRET  || '';
-export const DASHBOARD_PASSWORD = import.meta.env.VITE_DASHBOARD_PASSWORD || 'admin';
-
 // Firebase (mirrors e-psa frontend config)
 export const FIREBASE_CONFIG = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY            || '',

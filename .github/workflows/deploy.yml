@@ -33,7 +33,8 @@ jobs:
           VITE_TURSO_AUTH_TOKEN:     ${{ secrets.VITE_TURSO_AUTH_TOKEN }}
           VITE_REDCAP_PROXY_URL:     ${{ secrets.VITE_REDCAP_PROXY_URL }}
           VITE_DASHBOARD_SECRET:     ${{ secrets.VITE_DASHBOARD_SECRET }}
-          VITE_DASHBOARD_PASSWORD:   ${{ secrets.VITE_DASHBOARD_PASSWORD }}
+          VITE_AZURE_CLIENT_ID:      ${{ secrets.VITE_AZURE_CLIENT_ID }}
+          VITE_AZURE_TENANT_ID:      ${{ secrets.VITE_AZURE_TENANT_ID }}
           VITE_FIREBASE_API_KEY:            ${{ secrets.VITE_FIREBASE_API_KEY }}
           VITE_FIREBASE_AUTH_DOMAIN:        ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
           VITE_FIREBASE_PROJECT_ID:         ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
