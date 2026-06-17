@@ -54,7 +54,7 @@ export default function RedcapTab({ records, loading, error, onRefresh }) {
       ) : error ? (
         <div className="error-block">
           <p>Could not load REDCap records: {error}</p>
-          <p className="error-hint">Make sure <code>VITE_REDCAP_PROXY_URL</code> and <code>VITE_DASHBOARD_SECRET</code> are set, and the Cloudflare Worker is deployed.</p>
+          <p className="error-hint">Make sure <code>REDCAP_TOKEN</code> and <code>REDCAP_API_URL</code> are set as Cloudflare Pages environment variables.</p>
         </div>
       ) : list.length === 0 ? (
         <div className="empty">No REDCap records found. Configure the proxy or check IRB access.</div>

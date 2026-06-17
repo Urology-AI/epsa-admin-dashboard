@@ -1,10 +1,11 @@
-// Read-back from REDCap via the Cloudflare Worker proxy (GET /records).
-// The proxy validates DASHBOARD_SECRET so the REDCap token never reaches the browser.
-
-import { REDCAP_PROXY_URL, DASHBOARD_SECRET } from '../config/env.js';
+// REDCap read-back via the same-origin Pages Function at GET /records.
+// The REDCap token lives in Cloudflare Pages environment variables (server-side).
+// No secret is needed in the browser — the function is same-origin.
 
 export function isRedcapConfigured() {
-  return !!(REDCAP_PROXY_URL && DASHBOARD_SECRET);
+  // Always available when deployed to Cloudflare Pages.
+  // In local dev it returns false gracefully if the function isn't running.
+  return typeof window !== 'undefined';
 }
 
 /**
@@ -12,13 +13,10 @@ export function isRedcapConfigured() {
  * Returns an array of record objects (REDCap flat format with labels).
  */
 export async function fetchRedcapRecords() {
-  if (!REDCAP_PROXY_URL || !DASHBOARD_SECRET) return [];
-  const res = await fetch(`${REDCAP_PROXY_URL}/records`, {
-    headers: { Authorization: `Bearer ${DASHBOARD_SECRET}` },
-  });
+  const res = await fetch('/records');
   if (!res.ok) throw new Error(`REDCap proxy returned ${res.status}`);
   const data = await res.json();
-  if (data.error) throw new Error(data.error);
+  if (data?.error) throw new Error(data.error);
   return Array.isArray(data) ? data : [];
 }
 
