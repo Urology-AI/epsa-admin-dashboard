@@ -128,8 +128,19 @@
   border-radius: 99px;
   border: 1px solid;
 }
-.source-ok  { border-color: var(--green); color: var(--green); }
-.source-off { border-color: var(--border); color: var(--text-muted); }
+.source-ok      { border-color: var(--green);  color: var(--green); }
+.source-error   { border-color: var(--red);    color: var(--red); }
+.source-loading { border-color: var(--border); color: var(--text-muted); }
+.source-off     { border-color: var(--border); color: var(--text-muted); opacity: 0.6; }
+
+.source-spin {
+  animation: source-spin 800ms linear infinite;
+  display: inline-block;
+}
+@keyframes source-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
 
 /* ── Progress bar ── */
 .progress-block { margin-top: 0.5rem; }
