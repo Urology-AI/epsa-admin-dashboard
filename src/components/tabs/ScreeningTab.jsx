@@ -11,7 +11,7 @@ function RedcapBadge({ pushedAt, inRedcap }) {
   }
   if (inRedcap) {
     return (
-      <span className="badge badge-blue" title="Found in REDCap (read-back confirmed)">
+      <span className="badge badge-blue" title="Found in REDCap by session_ref read-back">
         <CheckCircle size={11} /> REDCap (verified)
       </span>
     );
@@ -24,10 +24,14 @@ function RedcapBadge({ pushedAt, inRedcap }) {
 }
 
 function TierBadge({ tier }) {
-  const color = tier?.includes('LOW') || tier?.includes('MINIMAL') ? 'var(--green)'
-    : tier?.includes('HIGH') || tier?.includes('ELEVATED') ? 'var(--red)'
+  const color = tier?.toLowerCase().includes('low') || tier?.toLowerCase().includes('minimal')
+    ? 'var(--green)'
+    : tier?.toLowerCase().includes('high') || tier?.toLowerCase().includes('elevated')
+    ? 'var(--red)'
     : 'var(--amber)';
-  return tier ? <span className="badge" style={{ background: 'transparent', border: `1px solid ${color}`, color }}>{tier}</span> : null;
+  return tier
+    ? <span className="badge" style={{ background: 'transparent', border: `1px solid ${color}`, color }}>{tier}</span>
+    : null;
 }
 
 function SessionRow({ session, redcapIds }) {
@@ -45,17 +49,17 @@ function SessionRow({ session, redcapIds }) {
         <td>{session.age ?? '—'}</td>
         <td>{session.race ?? '—'}</td>
         <td><TierBadge tier={session.tier_key} /></td>
-        <td><RedcapBadge pushedAt={session.redcap_pushed_at} inRedcap={inRedcap} /></td>
+        <td>
+          <RedcapBadge pushedAt={session.redcap_pushed_at} inRedcap={inRedcap} />
+        </td>
       </tr>
       {open && (
         <tr className="session-detail-row">
           <td colSpan={7}>
             <div className="session-detail">
-              {session._full ? (
-                <pre className="session-json">{JSON.stringify(session._full, null, 2)}</pre>
-              ) : (
-                <p className="no-data">No full record available</p>
-              )}
+              {session._full
+                ? <pre className="session-json">{JSON.stringify(session._full, null, 2)}</pre>
+                : <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', margin: 0 }}>No full record available</p>}
             </div>
           </td>
         </tr>
@@ -64,12 +68,12 @@ function SessionRow({ session, redcapIds }) {
   );
 }
 
-export default function ScreeningTab({ sessions, redcapIds, loading, onRefresh }) {
+export default function ScreeningTab({ sessions, redcapIds, loading, error, onRefresh }) {
   const [filter, setFilter] = useState('all');
 
   const filtered = (sessions ?? []).filter((s) => {
-    if (filter === 'redcap') return s.redcap_pushed_at || redcapIds?.has(s.session_ref);
-    if (filter === 'pending') return !s.redcap_pushed_at && !redcapIds?.has(s.session_ref);
+    if (filter === 'redcap')   return s.redcap_pushed_at || redcapIds?.has(s.session_ref);
+    if (filter === 'pending')  return !s.redcap_pushed_at && !redcapIds?.has(s.session_ref);
     return true;
   });
 
@@ -89,11 +93,32 @@ export default function ScreeningTab({ sessions, redcapIds, loading, onRefresh }
         </div>
       </div>
 
+      {/* Turso error warning */}
+      {error && (
+        <div className="error-block" style={{ marginBottom: '1.25rem' }}>
+          <p style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}>
+            <AlertCircle size={16} /> Could not load Turso screening sessions
+          </p>
+          <p className="error-hint" style={{ marginTop: '0.4rem' }}>{error}</p>
+          <p className="error-hint">
+            Set <code>TURSO_URL</code> and <code>TURSO_AUTH_TOKEN</code> as Cloudflare Pages environment variables.
+          </p>
+        </div>
+      )}
+
+      {/* REDCap correlation note */}
+      {!error && redcapIds !== null && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+          <CheckCircle size={13} style={{ color: 'var(--green)', flexShrink: 0 }} />
+          REDCap loaded — each row shows whether its <code style={{ color: 'var(--text)' }}>session_ref</code> matches a REDCap <code style={{ color: 'var(--text)' }}>record_id</code>.
+        </div>
+      )}
+
       {loading ? (
         <div className="loading">Loading sessions…</div>
-      ) : filtered.length === 0 ? (
+      ) : !error && filtered.length === 0 ? (
         <div className="empty">No sessions found.</div>
-      ) : (
+      ) : !error && (
         <div className="table-wrap">
           <table className="data-table">
             <thead>
@@ -104,7 +129,7 @@ export default function ScreeningTab({ sessions, redcapIds, loading, onRefresh }
                 <th>Age</th>
                 <th>Race</th>
                 <th>Risk Tier</th>
-                <th>REDCap Status</th>
+                <th>REDCap</th>
               </tr>
             </thead>
             <tbody>
@@ -115,7 +140,7 @@ export default function ScreeningTab({ sessions, redcapIds, loading, onRefresh }
           </table>
         </div>
       )}
-      <p className="row-count">{filtered.length} of {(sessions ?? []).length} sessions shown</p>
+      {!error && <p className="row-count">{filtered.length} of {(sessions ?? []).length} sessions shown</p>}
     </div>
   );
 }

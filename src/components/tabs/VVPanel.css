@@ -1,0 +1,247 @@
+/* ── VV Panel ── */
+.vv-root {
+  padding: 2rem;
+  max-width: 960px;
+}
+
+.vv-heading {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 0.25rem;
+}
+.vv-sub {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 0 0 2rem;
+}
+
+/* ── Section ── */
+.vv-section {
+  margin-bottom: 2.5rem;
+}
+.vv-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+.vv-section-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+/* ── Re-run button ── */
+.vv-rerun-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.4rem 0.9rem;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+.vv-rerun-btn:hover { opacity: 0.88; }
+
+/* ── Check rows ── */
+.vv-checks { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.vv-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  border: 1px solid;
+  border-left-width: 4px;
+}
+.vv-check--pass {
+  background: rgba(76, 175, 80, 0.06);
+  border-color: rgba(76, 175, 80, 0.3);
+  border-left-color: var(--green);
+}
+.vv-check--fail {
+  background: rgba(239, 83, 80, 0.06);
+  border-color: rgba(239, 83, 80, 0.3);
+  border-left-color: var(--red);
+}
+.vv-check-icon { margin-top: 1px; flex-shrink: 0; }
+.vv-check-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.vv-check--pass .vv-check-label { color: #166534; }
+.vv-check--fail .vv-check-label { color: #991b1b; }
+.vv-check-detail {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+  line-height: 1.5;
+}
+
+/* ── Progress bar ── */
+.vv-progress-wrap { margin-bottom: 1rem; }
+.vv-progress-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 0.4rem;
+}
+.vv-progress-label span:last-child { font-weight: 600; color: var(--text); }
+.vv-progress-track {
+  height: 8px;
+  background: var(--surface2);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.vv-progress-fill {
+  height: 100%;
+  border-radius: 99px;
+  background: var(--green);
+  transition: width 0.35s;
+}
+
+/* ── Milestone rows ── */
+.vv-milestones { display: flex; flex-direction: column; gap: 0.6rem; }
+
+.vv-milestone {
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.vv-milestone--complete { background: rgba(76,175,80,0.06); border-color: rgba(76,175,80,0.25); }
+.vv-milestone--blocked  { background: rgba(239,83,80,0.06); border-color: rgba(239,83,80,0.25); }
+.vv-milestone--inprogress { border-color: var(--accent); }
+
+.vv-milestone-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 0.65rem;
+}
+
+.vv-milestone-fields {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.vv-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.vv-field label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.vv-field input[type="date"],
+.vv-field select,
+.vv-field input[type="text"] {
+  font-size: 0.82rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+}
+.vv-field input[type="date"]:focus,
+.vv-field select:focus,
+.vv-field input[type="text"]:focus {
+  border-color: var(--accent);
+}
+.vv-field--notes { flex: 1; min-width: 220px; }
+.vv-field--notes input { width: 100%; box-sizing: border-box; }
+
+/* ── FMEA counter ── */
+.vv-fmea-count {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* ── FMEA rows ── */
+.vv-fmea-list { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.vv-fmea-row {
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  overflow: hidden;
+}
+.vv-fmea-row--critical  { border-left-color: #dc2626; }
+.vv-fmea-row--high      { border-left-color: #d97706; }
+.vv-fmea-row--moderate  { border-left-color: #2563eb; }
+.vv-fmea-row--mitigated { border-left-color: var(--green) !important; background: rgba(76,175,80,0.05); }
+
+.vv-fmea-header {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem 1rem;
+  cursor: default;
+}
+
+.vv-fmea-checkbox {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  flex-shrink: 0;
+  accent-color: var(--green);
+}
+
+.vv-sev-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.18rem 0.55rem;
+  border-radius: 99px;
+  color: #fff;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.vv-sev-badge--critical { background: #dc2626; }
+.vv-sev-badge--high     { background: #d97706; }
+.vv-sev-badge--moderate { background: #2563eb; }
+
+.vv-fmea-name {
+  flex: 1;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.vv-fmea-toggle {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  transition: background 0.1s;
+}
+.vv-fmea-toggle:hover { background: var(--surface2); color: var(--text); }
+
+.vv-fmea-mitigation {
+  padding: 0.6rem 1rem 0.75rem 3rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+  border-top: 1px solid var(--border);
+}
+.vv-fmea-mitigation strong { color: var(--text); }

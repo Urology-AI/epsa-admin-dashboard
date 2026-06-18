@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { LogOut, LayoutDashboard, MonitorSmartphone, Calculator, Database, ShieldCheck } from 'lucide-react';
 import { isTursoConfigured, fetchScreeningSessions, fetchScreeningStats } from '../services/tursoService.js';
 import { fetchCalculatorSessions } from '../services/firebaseService.js';
-import { isRedcapConfigured, fetchRedcapRecords, fetchRedcapRecordIdSet } from '../services/redcapService.js';
+import { isRedcapConfigured, fetchRedcapRecords } from '../services/redcapService.js';
 import OverviewTab    from './tabs/OverviewTab.jsx';
 import ScreeningTab   from './tabs/ScreeningTab.jsx';
 import CalculatorTab  from './tabs/CalculatorTab.jsx';
@@ -11,41 +11,52 @@ import VVPanel        from './tabs/VVPanel.jsx';
 import './UnifiedDashboard.css';
 
 const TABS = [
-  { id: 'overview',   label: 'Overview',             Icon: LayoutDashboard },
-  { id: 'screening',  label: 'Screening (Bus)',       Icon: MonitorSmartphone },
-  { id: 'calculator', label: 'Calculator (Full Tool)', Icon: Calculator },
-  { id: 'redcap',     label: 'REDCap Sinai',          Icon: Database },
-  { id: 'vv',         label: 'Verification & Validation', Icon: ShieldCheck },
+  { id: 'overview',   label: 'Overview',                  Icon: LayoutDashboard },
+  { id: 'screening',  label: 'Screening (Turso)',          Icon: MonitorSmartphone },
+  { id: 'calculator', label: 'Calculator (Firebase)',       Icon: Calculator },
+  { id: 'redcap',     label: 'REDCap Sinai',               Icon: Database },
+  { id: 'vv',         label: 'Verification & Validation',  Icon: ShieldCheck },
 ];
+
+// status: 'loading' | 'ok' | 'error' | 'off'
+function initStatus(configured) {
+  return configured ? 'loading' : 'off';
+}
 
 export default function UnifiedDashboard({ onLogout }) {
   const [tab, setTab] = useState('overview');
 
   // Screening (Turso)
-  const [screeningSessions, setScreeningSessions]   = useState([]);
-  const [screeningStats,    setScreeningStats]      = useState(null);
-  const [screeningLoading,  setScreeningLoading]    = useState(false);
+  const [screeningSessions, setScreeningSessions] = useState([]);
+  const [screeningStats,    setScreeningStats]    = useState(null);
+  const [screeningLoading,  setScreeningLoading]  = useState(false);
+  const [screeningError,    setScreeningError]    = useState(null);
 
   // Calculator (Firebase)
-  const [calcSessions,   setCalcSessions]   = useState([]);
-  const [calcLoading,    setCalcLoading]    = useState(false);
-  const [calcError,      setCalcError]      = useState(null);
+  const [calcSessions, setCalcSessions] = useState([]);
+  const [calcLoading,  setCalcLoading]  = useState(false);
+  const [calcError,    setCalcError]    = useState(null);
 
   // REDCap
-  const [redcapRecords,  setRedcapRecords]  = useState([]);
-  const [redcapIds,      setRedcapIds]      = useState(null);
-  const [redcapLoading,  setRedcapLoading]  = useState(false);
-  const [redcapError,    setRedcapError]    = useState(null);
+  const [redcapRecords, setRedcapRecords] = useState([]);
+  const [redcapIds,     setRedcapIds]     = useState(null);
+  const [redcapLoading, setRedcapLoading] = useState(false);
+  const [redcapError,   setRedcapError]   = useState(null);
 
-  const sources = {
-    turso:    isTursoConfigured(),
-    firebase: true,
-    redcap:   isRedcapConfigured(),
-  };
+  // Source health: 'loading' | 'ok' | 'error' | 'off'
+  const [sourceStatus, setSourceStatus] = useState({
+    turso:    initStatus(isTursoConfigured()),
+    firebase: 'loading',
+    redcap:   initStatus(isRedcapConfigured()),
+  });
 
   const loadScreening = useCallback(async () => {
-    if (!isTursoConfigured()) return;
+    if (!isTursoConfigured()) {
+      setSourceStatus((s) => ({ ...s, turso: 'off' }));
+      return;
+    }
     setScreeningLoading(true);
+    setScreeningError(null);
     try {
       const [sessions, stats] = await Promise.all([
         fetchScreeningSessions(),
@@ -53,8 +64,11 @@ export default function UnifiedDashboard({ onLogout }) {
       ]);
       setScreeningSessions(sessions);
       setScreeningStats(stats);
+      setSourceStatus((s) => ({ ...s, turso: 'ok' }));
     } catch (e) {
       console.error('Screening load error:', e);
+      setScreeningError(e.message);
+      setSourceStatus((s) => ({ ...s, turso: 'error' }));
     } finally {
       setScreeningLoading(false);
     }
@@ -65,23 +79,30 @@ export default function UnifiedDashboard({ onLogout }) {
     setCalcError(null);
     try {
       setCalcSessions(await fetchCalculatorSessions());
+      setSourceStatus((s) => ({ ...s, firebase: 'ok' }));
     } catch (e) {
       setCalcError(e.message);
+      setSourceStatus((s) => ({ ...s, firebase: 'error' }));
     } finally {
       setCalcLoading(false);
     }
   }, []);
 
   const loadRedcap = useCallback(async () => {
-    if (!isRedcapConfigured()) return;
+    if (!isRedcapConfigured()) {
+      setSourceStatus((s) => ({ ...s, redcap: 'off' }));
+      return;
+    }
     setRedcapLoading(true);
     setRedcapError(null);
     try {
       const records = await fetchRedcapRecords();
       setRedcapRecords(records);
       setRedcapIds(new Set(records.map((r) => r.record_id)));
+      setSourceStatus((s) => ({ ...s, redcap: 'ok' }));
     } catch (e) {
       setRedcapError(e.message);
+      setSourceStatus((s) => ({ ...s, redcap: 'error' }));
     } finally {
       setRedcapLoading(false);
     }
@@ -92,8 +113,6 @@ export default function UnifiedDashboard({ onLogout }) {
     loadCalculator();
     loadRedcap();
   }, [loadScreening, loadCalculator, loadRedcap]);
-
-  const activeTab = TABS.find((t) => t.id === tab);
 
   return (
     <div className="dash-root">
@@ -126,7 +145,7 @@ export default function UnifiedDashboard({ onLogout }) {
           <OverviewTab
             screeningStats={screeningStats}
             calcSessions={calcSessions}
-            sources={sources}
+            sourceStatus={sourceStatus}
           />
         )}
         {tab === 'screening' && (
@@ -134,6 +153,7 @@ export default function UnifiedDashboard({ onLogout }) {
             sessions={screeningSessions}
             redcapIds={redcapIds}
             loading={screeningLoading}
+            error={screeningError}
             onRefresh={loadScreening}
           />
         )}
