@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { LogOut, LayoutDashboard, MonitorSmartphone, Calculator, Database } from 'lucide-react';
+import { LogOut, LayoutDashboard, MonitorSmartphone, Calculator, Database, ShieldCheck } from 'lucide-react';
 import { isTursoConfigured, fetchScreeningSessions, fetchScreeningStats } from '../services/tursoService.js';
 import { fetchCalculatorSessions } from '../services/firebaseService.js';
 import { isRedcapConfigured, fetchRedcapRecords, fetchRedcapRecordIdSet } from '../services/redcapService.js';
@@ -7,6 +7,7 @@ import OverviewTab    from './tabs/OverviewTab.jsx';
 import ScreeningTab   from './tabs/ScreeningTab.jsx';
 import CalculatorTab  from './tabs/CalculatorTab.jsx';
 import RedcapTab      from './tabs/RedcapTab.jsx';
+import VVPanel        from './tabs/VVPanel.jsx';
 import './UnifiedDashboard.css';
 
 const TABS = [
@@ -14,6 +15,7 @@ const TABS = [
   { id: 'screening',  label: 'Screening (Bus)',       Icon: MonitorSmartphone },
   { id: 'calculator', label: 'Calculator (Full Tool)', Icon: Calculator },
   { id: 'redcap',     label: 'REDCap Sinai',          Icon: Database },
+  { id: 'vv',         label: 'Verification & Validation', Icon: ShieldCheck },
 ];
 
 export default function UnifiedDashboard({ onLogout }) {
@@ -151,6 +153,7 @@ export default function UnifiedDashboard({ onLogout }) {
             onRefresh={loadRedcap}
           />
         )}
+        {tab === 'vv' && <VVPanel />}
       </main>
     </div>
   );
