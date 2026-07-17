@@ -13,10 +13,23 @@ import { TEST_CASES } from '../../data/testCases.js';
 import './VVPanel.css';
 
 const ASSUMPTIONS_REGISTER = [
-  { id: 'A1', assumption: 'BRCA+/Lynch/other elevated germline mutation receives hardcoded 16 points — maximum on scale, equal to age 70+.' },
-  { id: 'A2', assumption: 'Family history of non-prostate hereditary cancer (e.g. pancreatic) is literature-anchored at 4 pts (no local cohort data) and independently sets recommendGeneticCounseling — see spreadsheet case C12.' },
-  { id: 'A3', assumption: 'Ashkenazi Jewish ancestry is literature-anchored at 2 pts as a carrier-probability marker (not a direct PCa OR; no local cohort data) and independently sets recommendGeneticCounseling — see spreadsheet case C14.' },
+  { id: 'A1', assumption: 'BRCA+/Lynch/other elevated germline mutation (brcaStatus) receives hardcoded 16 points — maximum on scale, equal to age 70+.' },
+  { id: 'A2', assumption: 'Expanded germline panel (HOXB13/ATM/CHEK2/PALB2/Lynch-MMR via germlineMutations[]) shares the same 16-pt anchor as brcaStatus, not double-counted if both fire.' },
+  { id: 'A3', assumption: 'Family history of breast/ovarian/pancreatic cancer (familyHistoryCancerTypes[]) is literature-anchored at 6 pts (no local cohort data) — see spreadsheet case C12.' },
+  { id: 'A4', assumption: 'Ashkenazi Jewish ancestry (ashkenaziJewish) is literature-anchored at 4 pts as a BRCA carrier-probability marker (not a direct PCa OR; no local cohort data) — see spreadsheet case C14.' },
 ];
+
+// The engine has no standalone "recommend genetic counseling" output — this reads the same
+// hereditary-risk item impacts the engine itself scores, rather than inventing a field.
+const HEREDITARY_RISK_ITEMS = new Set([
+  'Genetic mutation',
+  'Expanded germline panel',
+  'Family history (breast/ovarian/pancreatic)',
+  'Ashkenazi Jewish ancestry',
+]);
+function hasHereditaryRiskFlag(result) {
+  return (result?.itemImpacts || []).some((i) => HEREDITARY_RISK_ITEMS.has(i.item) && i.points > 0);
+}
 
 const MAX_SCORE = 80;
 
@@ -109,7 +122,7 @@ function runCaseSequence() {
       score: r?.calculationDetails?.rawScore ?? null,
       tier: ageGated ? (r.belowMinAge ? 'below-min-age' : 'above-max-age') : r?.epsaTierKey,
       recommendPSA: r?.recommendPSA,
-      recommendGeneticCounseling: r?.recommendGeneticCounseling ?? false,
+      hereditaryRisk: hasHereditaryRiskFlag(r),
     };
   });
 }
@@ -226,9 +239,10 @@ export default function VVPanel() {
         </div>
         <p className="vv-sub" style={{ margin: '0 0 1rem' }}>
           The 21 physician-authored cases from <code>ePSA test sequence.xlsx</code>, run through
-          the live <code>@epsa/engine</code> — not a cached spreadsheet snapshot. Cases C12
-          (pancreatic family history) and C14 (Ashkenazi ancestry) exercise the two literature-anchored
-          fields documented in A2/A3 above; both correctly set the genetic-counseling flag.
+          the live <code>@epsa/engine</code> — synced from the frontend's vendored copy (the
+          authoritative, production-live version), not a cached spreadsheet snapshot. Cases C12
+          (pancreatic family history) and C14 (Ashkenazi ancestry) exercise the fields documented
+          in A3/A4 above.
         </p>
         <div className="vv-case-table-wrap">
           <table className="vv-case-table">
@@ -238,18 +252,18 @@ export default function VVPanel() {
                 <th>Score</th>
                 <th>Tier</th>
                 <th>Recommend PSA</th>
-                <th>Genetic counseling</th>
+                <th>Hereditary risk scored</th>
                 <th>Panel ground truth</th>
               </tr>
             </thead>
             <tbody>
               {caseResults.map((c) => (
-                <tr key={c.id} className={c.recommendGeneticCounseling ? 'vv-case-row--counseling' : ''}>
+                <tr key={c.id} className={c.hereditaryRisk ? 'vv-case-row--counseling' : ''}>
                   <td>{c.id}</td>
                   <td>{c.score ?? '—'}</td>
                   <td>{c.tier ?? '—'}</td>
                   <td>{c.recommendPSA === true ? 'Yes' : c.recommendPSA === false ? 'No' : '—'}</td>
-                  <td>{c.recommendGeneticCounseling ? 'Yes' : 'No'}</td>
+                  <td>{c.hereditaryRisk ? 'Yes' : 'No'}</td>
                   <td className="vv-case-truth">{c.groundTruth}</td>
                 </tr>
               ))}

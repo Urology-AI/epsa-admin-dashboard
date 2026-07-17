@@ -12,16 +12,29 @@ const ENGINE_RESULTS = Object.fromEntries(
   TEST_CASES.map((c) => [c.id, calculateDynamicEPsa(c.formData)])
 );
 
+// The engine has no standalone "recommend genetic counseling" flag — this reads the same
+// hereditary-risk item impacts (BRCA/germline panel, hereditary-cancer family history,
+// Ashkenazi ancestry) the engine itself scores, rather than inventing a field it doesn't emit.
+const HEREDITARY_RISK_ITEMS = new Set([
+  'Genetic mutation',
+  'Expanded germline panel',
+  'Family history (breast/ovarian/pancreatic)',
+  'Ashkenazi Jewish ancestry',
+]);
+function hasHereditaryRiskFlag(result) {
+  return (result?.itemImpacts || []).some((i) => HEREDITARY_RISK_ITEMS.has(i.item) && i.points > 0);
+}
+
 function engineSummary(result) {
-  if (!result) return { label: 'Engine error', tier: null, recommendation: 'Could not compute — check formData', geneticCounseling: false };
-  const geneticCounseling = !!result.recommendGeneticCounseling;
-  if (result.belowMinAge) return { label: 'Below model age range (<40)', tier: null, recommendation: 'No score — model not validated under age 40', geneticCounseling };
-  if (result.aboveMaxScreeningAge) return { label: 'Above model age range (>75)', tier: null, recommendation: 'No score — model not validated above age 75; individualize', geneticCounseling };
+  if (!result) return { label: 'Engine error', tier: null, recommendation: 'Could not compute — check formData', hereditaryRisk: false };
+  const hereditaryRisk = hasHereditaryRiskFlag(result);
+  if (result.belowMinAge) return { label: 'Below model age range (<40)', tier: null, recommendation: 'No score — model not validated under age 40', hereditaryRisk };
+  if (result.aboveMaxScreeningAge) return { label: 'Above model age range (>75)', tier: null, recommendation: 'No score — model not validated above age 75; individualize', hereditaryRisk };
   return {
     label: `Raw score ${result.calculationDetails?.rawScore ?? '?'} / ${result.calculationDetails?.maxScore ?? 80}`,
     tier: result.epsaTierLabel,
     recommendation: result.psaRecommendMessage || (result.recommendPSA ? 'PSA recommended' : 'PSA not recommended by score alone'),
-    geneticCounseling,
+    hereditaryRisk,
   };
 }
 
@@ -154,8 +167,8 @@ export default function TestingTab() {
               <div className="testing-engine-label">Live @epsa/engine output</div>
               <div className="testing-engine-row">{engine.label}{engine.tier ? ` — ${engine.tier}` : ''}</div>
               <div className="testing-engine-row testing-engine-row--muted">{engine.recommendation}</div>
-              {engine.geneticCounseling && (
-                <div className="testing-engine-row testing-engine-counseling">Recommend genetic counseling referral (NCCN)</div>
+              {engine.hereditaryRisk && (
+                <div className="testing-engine-row testing-engine-counseling">Hereditary risk factor scored (germline mutation / hereditary-cancer family history / Ashkenazi ancestry)</div>
               )}
             </div>
 
