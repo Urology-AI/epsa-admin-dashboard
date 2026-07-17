@@ -104,7 +104,7 @@ export const TEST_CASES = [
     id: 'C12',
     description: "50-year-old man whose father died of pancreatic cancer at 60; genetic testing not yet done. Asymptomatic, healthy.",
     groundTruth: 'CONSIDER SCREEN - hereditary-cancer family history; genetic counseling + earlier screening (NCCN/AUA)',
-    formData: base({ age: 50, shim: spread(25, 5) }), // model only captures prostate FH — known gap
+    formData: base({ age: 50, familyHistoryOtherCancer: 'yes', shim: spread(25, 5) }),
   },
   {
     id: 'C13',
@@ -116,7 +116,7 @@ export const TEST_CASES = [
     id: 'C14',
     description: '46-year-old man of Ashkenazi Jewish ancestry; mother had breast cancer at 44. Not yet genetically tested. Asymptomatic.',
     groundTruth: 'CONSIDER SCREEN - BRCA-associated risk profile; genetic counseling + earlier screening (NCCN)',
-    formData: base({ age: 46, shim: spread(25, 5) }), // ancestry/family-breast-cancer not captured — known gap
+    formData: base({ age: 46, ashkenaziAncestry: 'yes', shim: spread(25, 5) }),
   },
   {
     id: 'C15',

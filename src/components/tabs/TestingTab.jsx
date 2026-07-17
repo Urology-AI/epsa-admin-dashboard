@@ -13,13 +13,15 @@ const ENGINE_RESULTS = Object.fromEntries(
 );
 
 function engineSummary(result) {
-  if (!result) return { label: 'Engine error', tier: null, recommendation: 'Could not compute — check formData' };
-  if (result.belowMinAge) return { label: 'Below model age range (<40)', tier: null, recommendation: 'No score — model not validated under age 40' };
-  if (result.aboveMaxScreeningAge) return { label: 'Above model age range (>75)', tier: null, recommendation: 'No score — model not validated above age 75; individualize' };
+  if (!result) return { label: 'Engine error', tier: null, recommendation: 'Could not compute — check formData', geneticCounseling: false };
+  const geneticCounseling = !!result.recommendGeneticCounseling;
+  if (result.belowMinAge) return { label: 'Below model age range (<40)', tier: null, recommendation: 'No score — model not validated under age 40', geneticCounseling };
+  if (result.aboveMaxScreeningAge) return { label: 'Above model age range (>75)', tier: null, recommendation: 'No score — model not validated above age 75; individualize', geneticCounseling };
   return {
     label: `Raw score ${result.calculationDetails?.rawScore ?? '?'} / ${result.calculationDetails?.maxScore ?? 80}`,
     tier: result.epsaTierLabel,
     recommendation: result.psaRecommendMessage || (result.recommendPSA ? 'PSA recommended' : 'PSA not recommended by score alone'),
+    geneticCounseling,
   };
 }
 
@@ -152,6 +154,9 @@ export default function TestingTab() {
               <div className="testing-engine-label">Live @epsa/engine output</div>
               <div className="testing-engine-row">{engine.label}{engine.tier ? ` — ${engine.tier}` : ''}</div>
               <div className="testing-engine-row testing-engine-row--muted">{engine.recommendation}</div>
+              {engine.geneticCounseling && (
+                <div className="testing-engine-row testing-engine-counseling">Recommend genetic counseling referral (NCCN)</div>
+              )}
             </div>
 
             <div className="testing-decision-group">

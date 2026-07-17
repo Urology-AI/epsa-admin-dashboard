@@ -14,8 +14,8 @@ import './VVPanel.css';
 
 const ASSUMPTIONS_REGISTER = [
   { id: 'A1', assumption: 'BRCA+/Lynch/other elevated germline mutation receives hardcoded 16 points — maximum on scale, equal to age 70+.' },
-  { id: 'A2', assumption: 'Model has no field for family history of non-prostate hereditary cancers (e.g. pancreatic) — see spreadsheet case C12.' },
-  { id: 'A3', assumption: 'Model has no field for Ashkenazi Jewish ancestry as an independent BRCA-associated risk marker — see spreadsheet case C14.' },
+  { id: 'A2', assumption: 'Family history of non-prostate hereditary cancer (e.g. pancreatic) is literature-anchored at 4 pts (no local cohort data) and independently sets recommendGeneticCounseling — see spreadsheet case C12.' },
+  { id: 'A3', assumption: 'Ashkenazi Jewish ancestry is literature-anchored at 2 pts as a carrier-probability marker (not a direct PCa OR; no local cohort data) and independently sets recommendGeneticCounseling — see spreadsheet case C14.' },
 ];
 
 const MAX_SCORE = 80;
@@ -109,6 +109,7 @@ function runCaseSequence() {
       score: r?.calculationDetails?.rawScore ?? null,
       tier: ageGated ? (r.belowMinAge ? 'below-min-age' : 'above-max-age') : r?.epsaTierKey,
       recommendPSA: r?.recommendPSA,
+      recommendGeneticCounseling: r?.recommendGeneticCounseling ?? false,
     };
   });
 }
@@ -225,8 +226,9 @@ export default function VVPanel() {
         </div>
         <p className="vv-sub" style={{ margin: '0 0 1rem' }}>
           The 21 physician-authored cases from <code>ePSA test sequence.xlsx</code>, run through
-          the live <code>@epsa/engine</code> — not a cached spreadsheet snapshot. Cases C12 and C14
-          test known model gaps (pancreatic family history, Ashkenazi ancestry) documented in A2/A3 above.
+          the live <code>@epsa/engine</code> — not a cached spreadsheet snapshot. Cases C12
+          (pancreatic family history) and C14 (Ashkenazi ancestry) exercise the two literature-anchored
+          fields documented in A2/A3 above; both correctly set the genetic-counseling flag.
         </p>
         <div className="vv-case-table-wrap">
           <table className="vv-case-table">
@@ -236,16 +238,18 @@ export default function VVPanel() {
                 <th>Score</th>
                 <th>Tier</th>
                 <th>Recommend PSA</th>
+                <th>Genetic counseling</th>
                 <th>Panel ground truth</th>
               </tr>
             </thead>
             <tbody>
               {caseResults.map((c) => (
-                <tr key={c.id} className={(c.id === 'C12' || c.id === 'C14') ? 'vv-case-row--gap' : ''}>
+                <tr key={c.id} className={c.recommendGeneticCounseling ? 'vv-case-row--counseling' : ''}>
                   <td>{c.id}</td>
                   <td>{c.score ?? '—'}</td>
                   <td>{c.tier ?? '—'}</td>
                   <td>{c.recommendPSA === true ? 'Yes' : c.recommendPSA === false ? 'No' : '—'}</td>
+                  <td>{c.recommendGeneticCounseling ? 'Yes' : 'No'}</td>
                   <td className="vv-case-truth">{c.groundTruth}</td>
                 </tr>
               ))}

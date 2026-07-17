@@ -113,7 +113,7 @@
   letter-spacing: 0.03em;
 }
 .vv-case-truth { white-space: normal; max-width: 340px; color: var(--text-muted); }
-.vv-case-row--gap { background: rgba(217, 119, 6, 0.07); }
+.vv-case-row--counseling { background: rgba(37, 99, 235, 0.06); }
 
 /* ── Progress bar ── */
 .vv-progress-wrap { margin-bottom: 1rem; }

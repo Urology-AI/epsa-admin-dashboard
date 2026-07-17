@@ -45,6 +45,12 @@
   font-size: 0.78rem;
   margin-top: 0.2rem;
 }
+.testing-engine-counseling {
+  color: #2563eb;
+  font-size: 0.78rem;
+  font-weight: 600;
+  margin-top: 0.4rem;
+}
 
 .testing-results-table-wrap {
   overflow-x: auto;
