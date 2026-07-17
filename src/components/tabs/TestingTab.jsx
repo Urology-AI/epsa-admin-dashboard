@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { RefreshCw, ChevronLeft, ChevronRight, CheckCircle2, ClipboardList, ListChecks } from 'lucide-react';
+import { RefreshCw, ChevronLeft, ChevronRight, CheckCircle2, ClipboardList, ListChecks, Lock, Sparkles } from 'lucide-react';
 import { calculateDynamicEPsa } from '@epsa/engine';
 import { TEST_CASES, DECISION_OPTIONS } from '../../data/testCases.js';
 import { fetchTestResponses, submitTestResponse } from '../../services/testingService.js';
@@ -26,13 +26,14 @@ function hasHereditaryRiskFlag(result) {
 }
 
 function engineSummary(result) {
-  if (!result) return { label: 'Engine error', tier: null, recommendation: 'Could not compute — check formData', hereditaryRisk: false };
+  if (!result) return { label: 'Engine error', tier: null, tone: 'error', recommendation: 'Could not compute — check formData', hereditaryRisk: false };
   const hereditaryRisk = hasHereditaryRiskFlag(result);
-  if (result.belowMinAge) return { label: 'Below model age range (<40)', tier: null, recommendation: 'No score — model not validated under age 40', hereditaryRisk };
-  if (result.aboveMaxScreeningAge) return { label: 'Above model age range (>75)', tier: null, recommendation: 'No score — model not validated above age 75; individualize', hereditaryRisk };
+  if (result.belowMinAge) return { label: 'Below model age range (<40)', tier: null, tone: 'neutral', recommendation: 'No score — model not validated under age 40', hereditaryRisk };
+  if (result.aboveMaxScreeningAge) return { label: 'Above model age range (>75)', tier: null, tone: 'neutral', recommendation: 'No score — model not validated above age 75; individualize', hereditaryRisk };
   return {
     label: `Raw score ${result.calculationDetails?.rawScore ?? '?'} / ${result.calculationDetails?.maxScore ?? 80}`,
     tier: result.epsaTierLabel,
+    tone: result.epsaTierKey || 'neutral',
     recommendation: result.psaRecommendMessage || (result.recommendPSA ? 'PSA recommended' : 'PSA not recommended by score alone'),
     hereditaryRisk,
   };
@@ -57,6 +58,7 @@ export default function TestingTab() {
   const currentCase = TEST_CASES[index];
   const engineResult = ENGINE_RESULTS[currentCase.id];
   const engine = engineSummary(engineResult);
+  const [revealed, setRevealed] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -78,6 +80,7 @@ export default function TestingTab() {
     const mine = responses.find((r) => r.caseId === currentCase.id && r.physicianEmail === myEmail);
     setDecision(mine?.decision || '');
     setNotes(mine?.notes || '');
+    setRevealed(!!mine);
   }, [index, currentCase.id, responses, myEmail]);
 
   const answeredCaseIds = useMemo(
@@ -98,6 +101,7 @@ export default function TestingTab() {
         engineTier: engineResult?.epsaTierKey ?? null,
         engineRecommendPSA: engineResult?.recommendPSA ?? null,
       });
+      setRevealed(true);
       await load();
       if (index < TEST_CASES.length - 1) setIndex((i) => i + 1);
     } catch (e) {
@@ -163,14 +167,30 @@ export default function TestingTab() {
             </div>
             <p className="testing-case-desc">{currentCase.description}</p>
 
-            <div className="testing-engine-box">
-              <div className="testing-engine-label">Live @epsa/engine output</div>
-              <div className="testing-engine-row">{engine.label}{engine.tier ? ` — ${engine.tier}` : ''}</div>
-              <div className="testing-engine-row testing-engine-row--muted">{engine.recommendation}</div>
-              {engine.hereditaryRisk && (
-                <div className="testing-engine-row testing-engine-counseling">Hereditary risk factor scored (germline mutation / hereditary-cancer family history / Ashkenazi ancestry)</div>
-              )}
-            </div>
+            {revealed ? (
+              <div className={`testing-engine-box testing-engine-box--${engine.tone}`}>
+                <div className="testing-engine-label">
+                  <Sparkles size={12} /> Live @epsa/engine output
+                </div>
+                <div className="testing-engine-row testing-engine-row--headline">
+                  {engine.tier && <span className="testing-engine-tier-badge">{engine.tier}</span>}
+                  {engine.label}
+                </div>
+                <div className="testing-engine-row testing-engine-row--muted">{engine.recommendation}</div>
+                {engine.hereditaryRisk && (
+                  <div className="testing-engine-row testing-engine-counseling">Hereditary risk factor scored (germline mutation / hereditary-cancer family history / Ashkenazi ancestry)</div>
+                )}
+              </div>
+            ) : (
+              <div className="testing-engine-box testing-engine-box--hidden">
+                <div className="testing-engine-label">
+                  <Lock size={12} /> Engine result hidden
+                </div>
+                <div className="testing-engine-row testing-engine-row--muted">
+                  Make your decision first — the @epsa/engine result reveals once you submit, so it doesn't bias your read of the case.
+                </div>
+              </div>
+            )}
 
             <div className="testing-decision-group">
               {DECISION_OPTIONS.map((opt) => (
