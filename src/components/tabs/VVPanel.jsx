@@ -1,124 +1,116 @@
 /**
  * VVPanel — Verification & Validation tab
- * 1. Model Verification — automated checks
+ * 1. Model Verification — automated checks against the LIVE @epsa/engine
+ * 1b. Spreadsheet Test Sequence — the 21 physician-authored cases run live
  * 2. Clinical Validation Tracker — localStorage-backed milestones
  * 3. FMEA Risk Register — localStorage-backed failure modes
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { CheckCircle, XCircle, RefreshCw } from 'lucide-react';
+import { calculateDynamicEPsa } from '@epsa/engine';
+import { TEST_CASES } from '../../data/testCases.js';
 import './VVPanel.css';
 
-// ─── Config snapshot (keep in sync with frontend calculatorConfig.js) ─────────
-const CONFIG_PART1_VARIABLES = [
-  { id: 'age_50_59' },
-  { id: 'age_60_69' },
-  { id: 'age_70_plus' },
-  { id: 'bmi_25_29_9' },
-  { id: 'bmi_ge_30' },
-  { id: 'ipss_moderate' },
-  { id: 'ipss_severe' },
-  { id: 'exercise_some' },
-  { id: 'exercise_none' },
-  { id: 'raceBlack' },
-  { id: 'fhBinary' },
-  { id: 'age60plus_x_ipss_moderate' },
-  { id: 'age60plus_x_ipss_severe' },
-];
-
-const SCORE_POINTS = {
-  age_50_59:                 4,
-  age_60_69:                 3,
-  age_70_plus:               2,
-  bmi_25_29_9:               9,
-  bmi_ge_30:                 4,
-  ipss_moderate:             0,
-  ipss_severe:               0,
-  exercise_some:             1,
-  exercise_none:             4,
-  raceBlack:                 7,
-  fhBinary:                  0,
-  age60plus_x_ipss_moderate: 0,
-  age60plus_x_ipss_severe:   0,
-};
-
 const ASSUMPTIONS_REGISTER = [
-  { id: 'A1', assumption: 'BRCA+ receives hardcoded 16 points — maximum on scale, equal to age 70+.' },
+  { id: 'A1', assumption: 'BRCA+/Lynch/other elevated germline mutation receives hardcoded 16 points — maximum on scale, equal to age 70+.' },
+  { id: 'A2', assumption: 'Model has no field for family history of non-prostate hereditary cancers (e.g. pancreatic) — see spreadsheet case C12.' },
+  { id: 'A3', assumption: 'Model has no field for Ashkenazi Jewish ancestry as an independent BRCA-associated risk marker — see spreadsheet case C14.' },
 ];
 
 const MAX_SCORE = 80;
 
-function computeScore(vars) {
-  return vars.reduce((sum, id) => sum + (SCORE_POINTS[id] ?? 0), 0);
-}
-function tierFromRaw(raw) {
-  if (raw >= 18) return 'elevated';
-  if (raw >= 11) return 'intermediate';
-  return 'low';
+function baseFormData(overrides) {
+  return {
+    race: 'white', bmi: 24, ipss: [0, 0, 0, 0, 0, 0, 0], shim: [5, 5, 5, 5, 5],
+    exercise: 0, familyHistory: 0, smoking: 0, brcaStatus: 'no', comorbidityScore: 0,
+    ...overrides,
+  };
 }
 
+function score(overrides) {
+  const r = calculateDynamicEPsa(baseFormData(overrides));
+  return r?.calculationDetails?.rawScore ?? null;
+}
+
+// Live checks against the real @epsa/engine — not a mock re-implementation.
 function runChecks() {
   const results = [];
 
   const profiles = [
-    { name: 'All-zero',                         vars: [] },
-    { name: 'All-max',                           vars: ['age_50_59', 'bmi_25_29_9', 'exercise_none', 'raceBlack'] },
-    { name: 'Average adult (55, BMI 27)',         vars: ['age_50_59', 'bmi_25_29_9'] },
-    { name: 'Young low-risk (42, BMI 22)',        vars: [] },
-    { name: 'Black 70+ (age_70_plus, raceBlack)', vars: ['age_70_plus', 'raceBlack'] },
+    { name: 'All-zero (age 55, no risk factors)', overrides: { age: 55 } },
+    { name: 'All-max (age 70, Black, BRCA+, comorbid=2)', overrides: { age: 70, race: 'black', brcaStatus: 'yes', comorbidityScore: 2, bmi: 33, smoking: 2, exercise: 2, ipss: [5,5,5,5,4,0,0], shim: [1,1,1,1,1] } },
+    { name: 'Average adult (55, BMI 27)', overrides: { age: 55, bmi: 27 } },
+    { name: 'Young low-risk (42, BMI 22)', overrides: { age: 42, bmi: 22 } },
+    { name: 'Black 70+', overrides: { age: 70, race: 'black' } },
   ];
-  const scores = profiles.map((p) => ({ name: p.name, raw: computeScore(p.vars) }));
-  const outOfRange = scores.filter((s) => s.raw < 0 || s.raw > MAX_SCORE);
+  const scores = profiles.map((p) => ({ name: p.name, raw: score(p.overrides) }));
+  const outOfRange = scores.filter((s) => s.raw == null || s.raw < 0 || s.raw > MAX_SCORE);
   results.push({
-    id: 'C1', label: 'Score range [0, 80]',
+    id: 'C1', label: `Score range [0, ${MAX_SCORE}] — live engine`,
     pass: outOfRange.length === 0,
     detail: outOfRange.length === 0
       ? `All 5 profiles in range. Scores: ${scores.map((s) => `${s.name}=${s.raw}`).join(', ')}`
       : `Out-of-range: ${outOfRange.map((s) => `${s.name}=${s.raw}`).join(', ')}`,
   });
 
-  const s70 = computeScore(['age_70_plus']);
-  const s60 = computeScore(['age_60_69']);
-  const s50 = computeScore(['age_50_59']);
+  const s70 = score({ age: 70 });
+  const s60 = score({ age: 65 });
+  const s50 = score({ age: 55 });
+  const s40 = score({ age: 42 });
   results.push({
-    id: 'C2', label: 'Age monotonicity (70+ ≥ 60–69 ≥ 50–59 ≥ baseline)',
-    pass: s70 >= s60 && s60 >= s50 && s50 >= 0,
-    detail: `70+=${s70}, 60–69=${s60}, 50–59=${s50}, baseline=0`,
+    id: 'C2', label: 'Age monotonicity (70+ ≥ 60–69 ≥ 50–59 ≥ 40s) — live engine',
+    pass: s70 >= s60 && s60 >= s50 && s50 >= s40,
+    detail: `70+=${s70}, 60–69=${s60}, 50–59=${s50}, 40s=${s40}`,
   });
 
-  const sBlack = computeScore(['raceBlack', 'age_50_59']);
-  const sWhite = computeScore(['age_50_59']);
+  const sBlack = score({ age: 55, race: 'black' });
+  const sWhite = score({ age: 55, race: 'white' });
   results.push({
-    id: 'C3', label: 'Race monotonicity (Black > non-Black, all else equal)',
+    id: 'C3', label: 'Race monotonicity (Black > non-Black, all else equal) — live engine',
     pass: sBlack > sWhite,
-    detail: `Black+age50-59=${sBlack}, white+age50-59=${sWhite}`,
+    detail: `Black+age55=${sBlack}, white+age55=${sWhite}`,
   });
 
-  const tier17 = tierFromRaw(17);
-  const tier18 = tierFromRaw(18);
+  const r17 = calculateDynamicEPsa(baseFormData({ age: 55, bmi: 33, exercise: 1 })); // aim near boundary
+  const boundaries = r17?.epsaTierBoundaries;
   results.push({
-    id: 'C4', label: 'Tier boundary: rawScore 17→intermediate, 18→elevated',
-    pass: tier17 === 'intermediate' && tier18 === 'elevated',
-    detail: `rawScore=17 → "${tier17}", rawScore=18 → "${tier18}"`,
+    id: 'C4', label: 'Tier boundaries reported by engine match spec (low ≤10, intermediate ≤17, elevated ≥18)',
+    pass: boundaries?.lowMax === 10 && boundaries?.intermediateMax === 17 && boundaries?.maxScore === MAX_SCORE,
+    detail: `engine reports: ${JSON.stringify(boundaries)}`,
   });
 
-  const nVars = CONFIG_PART1_VARIABLES.length;
-  const minN = nVars * 10;
   const currentN = 94;
+  const minN = 130; // ~13 active scoring factors × EPV 10
   results.push({
     id: 'C5', label: 'EPV estimate: minimum dataset size for EPV≥10',
     pass: currentN >= minN,
-    detail: `${nVars} variables → min N = ${minN} events. Current N = ${currentN}. ${currentN < minN ? 'UNDERPOWERED — refit needed.' : 'OK.'}`,
+    detail: `Current N = ${currentN}. Target N ≈ ${minN} for EPV≥10. ${currentN < minN ? 'UNDERPOWERED — refit needed.' : 'OK.'}`,
   });
 
-  const a1 = ASSUMPTIONS_REGISTER.find((a) => a.id === 'A1');
   results.push({
-    id: 'C6', label: 'BRCA hardcode assumption documented in ASSUMPTIONS_REGISTER',
-    pass: !!a1,
-    detail: a1 ? `A1: ${a1.assumption}` : 'A1 not found.',
+    id: 'C6', label: `Known-gap assumptions documented in ASSUMPTIONS_REGISTER (${ASSUMPTIONS_REGISTER.length})`,
+    pass: ASSUMPTIONS_REGISTER.length > 0,
+    detail: ASSUMPTIONS_REGISTER.map((a) => `${a.id}: ${a.assumption}`).join(' | '),
   });
 
   return results;
+}
+
+// Run the 21 physician-authored spreadsheet cases through the live engine.
+function runCaseSequence() {
+  return TEST_CASES.map((c) => {
+    const r = calculateDynamicEPsa(c.formData);
+    const ageGated = r?.belowMinAge || r?.aboveMaxScreeningAge;
+    return {
+      id: c.id,
+      description: c.description,
+      groundTruth: c.groundTruth,
+      score: r?.calculationDetails?.rawScore ?? null,
+      tier: ageGated ? (r.belowMinAge ? 'below-min-age' : 'above-max-age') : r?.epsaTierKey,
+      recommendPSA: r?.recommendPSA,
+    };
+  });
 }
 
 // ─── FMEA data ────────────────────────────────────────────────────────────────
@@ -163,11 +155,15 @@ function save(key, data) {
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function VVPanel() {
   const [checks,      setChecks]      = useState([]);
+  const [caseResults, setCaseResults] = useState([]);
   const [milestones,  setMilestones]  = useState(() => load(LS_MILESTONES));
   const [fmea,        setFmea]        = useState(() => load(LS_FMEA));
   const [expandedFm,  setExpandedFm]  = useState({});
 
-  const runAll = useCallback(() => setChecks(runChecks()), []);
+  const runAll = useCallback(() => {
+    setChecks(runChecks());
+    setCaseResults(runCaseSequence());
+  }, []);
   useEffect(() => { runAll(); }, [runAll]);
 
   const updateMilestone = (idx, field, value) => {
@@ -216,6 +212,45 @@ export default function VVPanel() {
               </div>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* ── 1b. Spreadsheet Test Sequence ── */}
+      <section className="vv-section">
+        <div className="vv-section-header">
+          <h3 className="vv-section-title">1b. Spreadsheet Test Sequence (live engine)</h3>
+          <button type="button" className="vv-rerun-btn" onClick={runAll}>
+            <RefreshCw size={13} /> Run Tests
+          </button>
+        </div>
+        <p className="vv-sub" style={{ margin: '0 0 1rem' }}>
+          The 21 physician-authored cases from <code>ePSA test sequence.xlsx</code>, run through
+          the live <code>@epsa/engine</code> — not a cached spreadsheet snapshot. Cases C12 and C14
+          test known model gaps (pancreatic family history, Ashkenazi ancestry) documented in A2/A3 above.
+        </p>
+        <div className="vv-case-table-wrap">
+          <table className="vv-case-table">
+            <thead>
+              <tr>
+                <th>Case</th>
+                <th>Score</th>
+                <th>Tier</th>
+                <th>Recommend PSA</th>
+                <th>Panel ground truth</th>
+              </tr>
+            </thead>
+            <tbody>
+              {caseResults.map((c) => (
+                <tr key={c.id} className={(c.id === 'C12' || c.id === 'C14') ? 'vv-case-row--gap' : ''}>
+                  <td>{c.id}</td>
+                  <td>{c.score ?? '—'}</td>
+                  <td>{c.tier ?? '—'}</td>
+                  <td>{c.recommendPSA === true ? 'Yes' : c.recommendPSA === false ? 'No' : '—'}</td>
+                  <td className="vv-case-truth">{c.groundTruth}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
 

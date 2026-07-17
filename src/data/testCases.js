@@ -98,7 +98,7 @@ export const TEST_CASES = [
     id: 'C11',
     description: '48-year-old man. Documented Lynch syndrome (MMR mutation) in the family; mother had colorectal cancer at 45. BRCA-negative. Asymptomatic, healthy.',
     groundTruth: 'CONSIDER SCREEN - hereditary cancer syndrome warrants genetic counseling + earlier screening (NCCN/AUA)',
-    formData: base({ age: 48, shim: spread(25, 5) }), // model has no Lynch/MMR field — known gap
+    formData: base({ age: 48, brcaStatus: 'lynch', shim: spread(25, 5) }),
   },
   {
     id: 'C12',
@@ -110,7 +110,7 @@ export const TEST_CASES = [
     id: 'C13',
     description: '45-year-old man with a confirmed germline HOXB13 mutation. No BRCA. Asymptomatic, healthy.',
     groundTruth: 'SCREEN - NCCN/AUA advise baseline screening from age 40 for high-risk germline variants',
-    formData: base({ age: 45, shim: spread(25, 5) }), // model only captures BRCA1/2 — known gap
+    formData: base({ age: 45, brcaStatus: 'other_elevated', shim: spread(25, 5) }),
   },
   {
     id: 'C14',
