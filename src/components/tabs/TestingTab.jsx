@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { RefreshCw, ChevronLeft, ChevronRight, CheckCircle2, ClipboardList, ListChecks, Lock, Sparkles } from 'lucide-react';
+import { RefreshCw, ChevronLeft, ChevronRight, CheckCircle2, ClipboardList, ListChecks, Lock, Sparkles, Download } from 'lucide-react';
 import { calculateDynamicEPsa } from '@epsa/engine';
 import { TEST_CASES, DECISION_OPTIONS } from '../../data/testCases.js';
 import { fetchTestResponses, submitTestResponse } from '../../services/testingService.js';
@@ -266,8 +266,41 @@ function ResultsView({ responses }) {
     return (a.physicianName || '').localeCompare(b.physicianName || '');
   });
 
+  const downloadCsv = () => {
+    const headers = [
+      'Case',
+      'Physician',
+      'Physician decision',
+      'Engine tier @ submission',
+      'Panel ground truth',
+      'Submitted',
+    ];
+    const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const rows = sorted.map((r) => [
+      r.caseId,
+      r.physicianName || r.physicianEmail,
+      r.decision,
+      r.engineTier || '',
+      CASE_BY_ID[r.caseId]?.groundTruth || '',
+      r.submittedAt ? new Date(r.submittedAt).toLocaleString() : '',
+    ]);
+    const csv = [headers, ...rows].map((row) => row.map(escape).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `physician-testing-results-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="testing-results-table-wrap">
+      <div className="testing-results-actions">
+        <button type="button" className="testing-nav-btn" onClick={downloadCsv}>
+          <Download size={15} /> Download CSV
+        </button>
+      </div>
       <table className="testing-results-table">
         <thead>
           <tr>
