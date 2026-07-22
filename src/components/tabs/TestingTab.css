@@ -126,6 +126,11 @@
   background: rgba(198, 40, 40, 0.06);
 }
 
+.testing-results-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
 .testing-results-table-wrap {
   overflow-x: auto;
   border: 1px solid var(--border);
