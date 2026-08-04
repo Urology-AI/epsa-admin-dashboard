@@ -7,115 +7,131 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { CheckCircle, XCircle, RefreshCw } from 'lucide-react';
+import { calculateDynamicEPsa } from '@epsa/engine';
 import './VVPanel.css';
 
-// ─── Config snapshot (keep in sync with frontend calculatorConfig.js) ─────────
-const CONFIG_PART1_VARIABLES = [
-  { id: 'age_50_59' },
-  { id: 'age_60_69' },
-  { id: 'age_70_plus' },
-  { id: 'bmi_25_29_9' },
-  { id: 'bmi_ge_30' },
-  { id: 'ipss_moderate' },
-  { id: 'ipss_severe' },
-  { id: 'exercise_some' },
-  { id: 'exercise_none' },
-  { id: 'raceBlack' },
-  { id: 'fhBinary' },
-  { id: 'age60plus_x_ipss_moderate' },
-  { id: 'age60plus_x_ipss_severe' },
-];
-
-const SCORE_POINTS = {
-  age_50_59:                 4,
-  age_60_69:                 3,
-  age_70_plus:               2,
-  bmi_25_29_9:               9,
-  bmi_ge_30:                 4,
-  ipss_moderate:             0,
-  ipss_severe:               0,
-  exercise_some:             1,
-  exercise_none:             4,
-  raceBlack:                 7,
-  fhBinary:                  0,
-  age60plus_x_ipss_moderate: 0,
-  age60plus_x_ipss_severe:   0,
-};
-
-const ASSUMPTIONS_REGISTER = [
-  { id: 'A1', assumption: 'BRCA+ receives hardcoded 16 points — maximum on scale, equal to age 70+.' },
-];
-
+/**
+ * Checks below call the real @epsa/engine calculateDynamicEPsa() directly —
+ * the same package the frontend and backend depend on — instead of
+ * maintaining a hand-copied point table here. A hand-copied snapshot drifts
+ * silently whenever the engine is retrained (this happened: the previous
+ * version of this file had age_70_plus=2, below age_50_59=4, an inverted
+ * scale that made C2 fail against a fictional model nobody ships). Calling
+ * the real function means a pass/fail here always reflects the deployed
+ * model, and engine changes surface here automatically on next run.
+ */
 const MAX_SCORE = 80;
+const CURRENT_VALIDATION_N = 94; // @epsa/engine's own in-sample validation cohort (see Research tab)
 
-function computeScore(vars) {
-  return vars.reduce((sum, id) => sum + (SCORE_POINTS[id] ?? 0), 0);
-}
-function tierFromRaw(raw) {
-  if (raw >= 18) return 'elevated';
-  if (raw >= 11) return 'intermediate';
-  return 'low';
+// Minimal valid formData — see @epsa/engine's validateInputs() for the
+// required-field list this must satisfy or calculateDynamicEPsa() returns null.
+const baseProfile = (overrides = {}) => ({
+  age: 55,
+  race: 'white',
+  bmi: 24,
+  exercise: 0,
+  familyHistory: 0,
+  comorbidityScore: 0,
+  ipss: [0, 0, 0, 0, 0, 0, 0],
+  shim: [5, 5, 5, 5, 5],
+  brcaStatus: 'no',
+  chemicalExposure: 'none',
+  dietPattern: 'mediterranean',
+  ...overrides,
+});
+
+function score(overrides) {
+  const result = calculateDynamicEPsa(baseProfile(overrides));
+  return result?.calculationDetails?.rawScore ?? null;
 }
 
 function runChecks() {
   const results = [];
 
   const profiles = [
-    { name: 'All-zero',                         vars: [] },
-    { name: 'All-max',                           vars: ['age_50_59', 'bmi_25_29_9', 'exercise_none', 'raceBlack'] },
-    { name: 'Average adult (55, BMI 27)',         vars: ['age_50_59', 'bmi_25_29_9'] },
-    { name: 'Young low-risk (42, BMI 22)',        vars: [] },
-    { name: 'Black 70+ (age_70_plus, raceBlack)', vars: ['age_70_plus', 'raceBlack'] },
+    { name: 'Baseline (55, BMI 24, white)',        overrides: {} },
+    { name: 'All-max (70+, BMI 35, Black, FH3)',    overrides: { age: 74, bmi: 35, race: 'black', familyHistory: 3, exercise: 2, comorbidityScore: 2, ipss: [5, 5, 5, 5, 5, 5, 5] } },
+    { name: 'Average adult (55, BMI 27)',           overrides: { bmi: 27 } },
+    { name: 'Young low-risk (42, BMI 22)',          overrides: { age: 42, bmi: 22 } },
+    { name: 'Black 70+',                            overrides: { age: 74, race: 'black' } },
   ];
-  const scores = profiles.map((p) => ({ name: p.name, raw: computeScore(p.vars) }));
-  const outOfRange = scores.filter((s) => s.raw < 0 || s.raw > MAX_SCORE);
+  const scores = profiles.map((p) => ({ name: p.name, raw: score(p.overrides) }));
+  const failed = scores.filter((s) => s.raw === null);
+  const outOfRange = scores.filter((s) => s.raw !== null && (s.raw < 0 || s.raw > MAX_SCORE));
   results.push({
     id: 'C1', label: 'Score range [0, 80]',
-    pass: outOfRange.length === 0,
-    detail: outOfRange.length === 0
-      ? `All 5 profiles in range. Scores: ${scores.map((s) => `${s.name}=${s.raw}`).join(', ')}`
-      : `Out-of-range: ${outOfRange.map((s) => `${s.name}=${s.raw}`).join(', ')}`,
+    pass: failed.length === 0 && outOfRange.length === 0,
+    detail: failed.length > 0
+      ? `Engine returned null (invalid input) for: ${failed.map((s) => s.name).join(', ')}`
+      : outOfRange.length === 0
+        ? `All 5 profiles in range. Scores: ${scores.map((s) => `${s.name}=${s.raw}`).join(', ')}`
+        : `Out-of-range: ${outOfRange.map((s) => `${s.name}=${s.raw}`).join(', ')}`,
   });
 
-  const s70 = computeScore(['age_70_plus']);
-  const s60 = computeScore(['age_60_69']);
-  const s50 = computeScore(['age_50_59']);
+  const s70 = score({ age: 74 });
+  const s60 = score({ age: 65 });
+  const s50 = score({ age: 55 });
+  const s40 = score({ age: 42 });
   results.push({
-    id: 'C2', label: 'Age monotonicity (70+ ≥ 60–69 ≥ 50–59 ≥ baseline)',
-    pass: s70 >= s60 && s60 >= s50 && s50 >= 0,
-    detail: `70+=${s70}, 60–69=${s60}, 50–59=${s50}, baseline=0`,
+    id: 'C2', label: 'Age monotonicity (70+ ≥ 60–69 ≥ 50–59 ≥ 40–49)',
+    pass: [s70, s60, s50, s40].every((v) => v !== null) && s70 >= s60 && s60 >= s50 && s50 >= s40,
+    detail: `70+=${s70}, 60–69=${s60}, 50–59=${s50}, 40–49=${s40}`,
   });
 
-  const sBlack = computeScore(['raceBlack', 'age_50_59']);
-  const sWhite = computeScore(['age_50_59']);
+  const sBlack = score({ race: 'black', age: 55 });
+  const sWhite = score({ race: 'white', age: 55 });
   results.push({
     id: 'C3', label: 'Race monotonicity (Black > non-Black, all else equal)',
-    pass: sBlack > sWhite,
-    detail: `Black+age50-59=${sBlack}, white+age50-59=${sWhite}`,
+    pass: sBlack !== null && sWhite !== null && sBlack > sWhite,
+    detail: `Black+age55=${sBlack}, white+age55=${sWhite}`,
   });
 
-  const tier17 = tierFromRaw(17);
-  const tier18 = tierFromRaw(18);
+  // Real tier boundaries per @epsa/engine: 0–10 low, 11–17 intermediate, ≥18 elevated.
+  const tierAt = (raw) => {
+    if (raw >= 18) return 'elevated';
+    if (raw >= 11) return 'intermediate';
+    return 'low';
+  };
+  // Age is the only single lever that crosses both boundaries cleanly on the
+  // baseline profile — walk it to find the real crossing points instead of
+  // asserting a hardcoded raw score maps to a hardcoded tier.
+  const ages = [45, 50, 55, 60, 65, 70, 74];
+  const ageScores = ages.map((age) => ({ age, raw: score({ age }), tier: tierAt(score({ age })) }));
+  const isMonotonicTier = ageScores.every((s, i) => i === 0 || ['low', 'intermediate', 'elevated'].indexOf(s.tier) >= ['low', 'intermediate', 'elevated'].indexOf(ageScores[i - 1].tier));
   results.push({
-    id: 'C4', label: 'Tier boundary: rawScore 17→intermediate, 18→elevated',
-    pass: tier17 === 'intermediate' && tier18 === 'elevated',
-    detail: `rawScore=17 → "${tier17}", rawScore=18 → "${tier18}"`,
+    id: 'C4', label: 'Tier assignment is monotonic with age (no regressions as risk increases)',
+    pass: isMonotonicTier,
+    detail: ageScores.map((s) => `age${s.age}=${s.raw}(${s.tier})`).join(', '),
   });
 
-  const nVars = CONFIG_PART1_VARIABLES.length;
-  const minN = nVars * 10;
-  const currentN = 94;
+  // EPV: count the real number of scored factors from a fully-populated
+  // profile's itemImpacts instead of a hand-maintained variable list.
+  const fullProfile = baseProfile({ age: 74, bmi: 35, race: 'black', familyHistory: 3, exercise: 2, comorbidityScore: 2, brcaStatus: 'yes', ipss: [5, 5, 5, 5, 5, 5, 5] });
+  const fullResult = calculateDynamicEPsa(fullProfile);
+  const nVars = fullResult?.itemImpacts?.length ?? null;
+  const minN = nVars != null ? nVars * 10 : null;
   results.push({
     id: 'C5', label: 'EPV estimate: minimum dataset size for EPV≥10',
-    pass: currentN >= minN,
-    detail: `${nVars} variables → min N = ${minN} events. Current N = ${currentN}. ${currentN < minN ? 'UNDERPOWERED — refit needed.' : 'OK.'}`,
+    pass: nVars != null && CURRENT_VALIDATION_N >= minN,
+    detail: nVars == null
+      ? 'Could not read itemImpacts from engine result.'
+      : `${nVars} scored factors → min N = ${minN} events. Current validation N = ${CURRENT_VALIDATION_N}. ${CURRENT_VALIDATION_N < minN ? 'UNDERPOWERED — refit needed.' : 'OK.'}`,
   });
 
-  const a1 = ASSUMPTIONS_REGISTER.find((a) => a.id === 'A1');
+  // BRCA hardcode: verify the real engine still scores brcaStatus='yes' as
+  // "Genetic mutation" at the documented anchor (16 pts, same as age 70+),
+  // rather than just checking a static text assumption never re-verified
+  // against the code.
+  const brcaResult = calculateDynamicEPsa(baseProfile({ brcaStatus: 'yes' }));
+  const brcaImpact = brcaResult?.itemImpacts?.find((i) => i.item === 'Genetic mutation');
+  const age70Result = calculateDynamicEPsa(baseProfile({ age: 74 }));
+  const ageImpact = age70Result?.itemImpacts?.find((i) => i.item === 'Age');
   results.push({
-    id: 'C6', label: 'BRCA hardcode assumption documented in ASSUMPTIONS_REGISTER',
-    pass: !!a1,
-    detail: a1 ? `A1: ${a1.assumption}` : 'A1 not found.',
+    id: 'C6', label: 'BRCA+ scored at documented anchor (equal to age 70+)',
+    pass: !!brcaImpact && !!ageImpact && brcaImpact.points === ageImpact.points,
+    detail: brcaImpact && ageImpact
+      ? `Genetic mutation (BRCA+) = ${brcaImpact.points} pts; Age (70+) = ${ageImpact.points} pts.`
+      : `Could not find both impacts in engine output (Genetic mutation: ${brcaImpact ? 'found' : 'missing'}, Age: ${ageImpact ? 'found' : 'missing'}).`,
   });
 
   return results;
