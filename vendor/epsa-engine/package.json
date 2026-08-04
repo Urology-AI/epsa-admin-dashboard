@@ -1,0 +1,12 @@
+{
+  "name": "@epsa/engine",
+  "version": "0.1.0",
+  "description": "Vendored copy of the shared ePSA clinical calculator engine — synced from e-psa/frontend/vendor/epsa-engine (the production-authoritative copy). See Urology-AI/epsa-engine for the canonical standalone repo.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

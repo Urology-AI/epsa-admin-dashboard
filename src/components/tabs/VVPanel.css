@@ -87,6 +87,34 @@
   line-height: 1.5;
 }
 
+/* ── Spreadsheet case table ── */
+.vv-case-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.vv-case-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+.vv-case-table th, .vv-case-table td {
+  text-align: left;
+  padding: 0.45rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.vv-case-table th {
+  background: var(--surface2);
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.vv-case-truth { white-space: normal; max-width: 340px; color: var(--text-muted); }
+.vv-case-row--counseling { background: rgba(37, 99, 235, 0.06); }
+
 /* ── Progress bar ── */
 .vv-progress-wrap { margin-bottom: 1rem; }
 .vv-progress-label {

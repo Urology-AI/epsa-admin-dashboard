@@ -216,6 +216,7 @@
   white-space: nowrap;
 }
 .badge-green  { background: rgba(76,175,80,0.15); color: var(--green); }
+.badge-red    { background: rgba(239,83,80,0.15);  color: var(--red, #ef5350); }
 .badge-blue   { background: rgba(66,165,245,0.15); color: var(--blue); }
 .badge-amber  { background: rgba(255,152,0,0.12);  color: var(--amber); }
 
