@@ -12,6 +12,28 @@ a REDCap API token. None of them may ever reach a browser.
 | 3 | `.github/workflows/security-nightly.yml` | 03:00 UTC daily | a deployed endpoint that stopped checking auth |
 | 4 | manual / scheduled review | weekly | design-level issues no scanner sees |
 
+## How this deploys
+
+Cloudflare's own Git integrations deploy this repo — **Pages** for the dashboard
+and its Functions, **Workers Builds** for `epsa-redcap-proxy`. Both trigger on
+push to `main` and appear as checks on pull requests.
+
+There is no GitHub Actions deploy step. `.github/workflows/deploy.yml` used to
+run `wrangler deploy` and `wrangler pages deploy`, but `CLOUDFLARE_API_TOKEN`
+and `CLOUDFLARE_ACCOUNT_ID` were never set, so it failed on every run from July
+2026 onward while Cloudflare's integrations quietly did the real work. It was
+removed rather than repaired: adding the secrets would have produced two
+systems racing to deploy the same artifacts. A workflow that always fails also
+trains everyone to ignore red CI, which is the opposite of what the rest of
+this file is for.
+
+Worker secrets are set out-of-band and never in CI:
+
+```bash
+wrangler secret put REDCAP_TOKEN   --config worker/wrangler.toml
+wrangler secret put REDCAP_API_URL --config worker/wrangler.toml
+```
+
 ## Setup
 
 ```bash
