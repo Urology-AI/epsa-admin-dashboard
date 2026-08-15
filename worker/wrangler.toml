@@ -38,7 +38,7 @@ AZURE_TENANT_ID = "77e89d61-570f-43b0-b9e4-634f462e34b8"
 # code change. Defence in depth only — the Entra token check
 # is the actual access control, since an Origin header means nothing outside a
 # browser. ALLOWED_ORIGIN (singular) is still honoured for back-compat.
-ALLOWED_ORIGINS = "https://epsa.mssm.edu,https://epsa-screening-tool.vercel.app,https://epsa-admin-dashboard.pages.dev"
+ALLOWED_ORIGINS = "https://epsa.mssm.edu,https://epsa-screening-tool.vercel.app,https://epsa-admin.urology.edu.eu.org,https://epsa-admin-dashboard.pages.dev"
 
 # Rate limiting is keyed on the authenticated identity. Without this binding
 # the limiter silently no-ops, so create the namespace before going live:
