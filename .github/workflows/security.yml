@@ -104,9 +104,6 @@ jobs:
   dependencies:
     name: Dependency audit
     runs-on: ubuntu-latest
-    # Advisories land independently of our changes; surface them without
-    # blocking an unrelated PR.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -116,4 +113,7 @@ jobs:
           cache: npm
 
       - run: npm ci
-      - run: npm audit --audit-level=high
+      # Report advisories without failing: they land independently of any
+      # change here, and a permanently red check trains people to ignore the
+      # whole workflow, including the checks that do gate merges.
+      - run: npm audit --audit-level=high || true
