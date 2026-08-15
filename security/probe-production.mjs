@@ -199,6 +199,41 @@ async function checkWorkerAuth() {
   }
 }
 
+/**
+ * The Turso proxy's one public route, /public/session, is upload-only for the
+ * patient-facing screening tool.
+ *
+ * This check deliberately sends an INVALID payload (no row.id). A valid one
+ * would insert a row into the live clinical_sessions table — a probe must
+ * never write to production. The 400 proves the route is reachable and
+ * validating; the checks below prove it grants nothing beyond inserting.
+ */
+async function checkPublicUploadRoute() {
+  console.log('\nTurso proxy — the public upload route must stay upload-only');
+
+  const url = `${TURSO_PROXY}/public/session`;
+
+  const bad = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ row: {} }),
+  });
+  if (bad.status === 400) pass('public upload rejects a payload with no row.id (400)');
+  else if (bad.status === 404) fail('public upload route missing (404) — Worker not deployed?');
+  else fail(`public upload returned ${bad.status} for an invalid payload; expected 400`);
+
+  // It must expose no way to read, list or delete — only insert.
+  for (const [method, path, label] of [
+    ['GET', '/public/session', 'GET on the public route'],
+    ['DELETE', '/public/session', 'DELETE on the public route'],
+    ['GET', '/public/sessions', 'listing via the public route'],
+  ]) {
+    const res = await fetch(`${TURSO_PROXY}${path}`, { method });
+    if (res.ok) fail(`${label} is permitted (${res.status}) — the route must be insert-only`);
+    else pass(`${label} refused (${res.status})`);
+  }
+}
+
 async function checkNoSecretsServed() {
   console.log('\nServed assets — no credential may reach the browser');
 
@@ -288,6 +323,7 @@ async function main() {
 
   await checkEndpointAuth();
   await checkWorkerAuth();
+  await checkPublicUploadRoute();
   await checkNoSecretsServed();
   await checkHeaders();
 
