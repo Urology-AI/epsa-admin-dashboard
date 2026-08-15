@@ -11,12 +11,22 @@
  * CI proves the committed code is correct. This proves the deployed thing is.
  *
  * Env:
- *   DASHBOARD_ORIGIN  default: https://epsa-admin-dashboard.pages.dev
+ *   DASHBOARD_ORIGIN   default: https://epsa-admin-dashboard.pages.dev
+ *   REDCAP_PROXY_URL   default: https://epsa-redcap-proxy.e-psa.workers.dev
+ *   TURSO_PROXY_URL    default: https://epsa-turso-proxy.e-psa.workers.dev
  *
  * Exit: 0 all checks pass, 1 one or more FAILED, 2 could not run.
  */
 
 const ORIGIN = (process.env.DASHBOARD_ORIGIN || 'https://epsa-admin-dashboard.pages.dev')
+  .replace(/\/$/, '');
+
+// The Workers are part of the same trust boundary: they hold the REDCap and
+// Turso credentials directly. A Pages Function that correctly refuses an
+// anonymous caller proves nothing if the Worker behind it does not.
+const REDCAP_PROXY = (process.env.REDCAP_PROXY_URL || 'https://epsa-redcap-proxy.e-psa.workers.dev')
+  .replace(/\/$/, '');
+const TURSO_PROXY = (process.env.TURSO_PROXY_URL || 'https://epsa-turso-proxy.e-psa.workers.dev')
   .replace(/\/$/, '');
 
 let passed = 0;
@@ -114,6 +124,81 @@ async function checkEndpointAuth() {
   }
 }
 
+/**
+ * Both Workers must refuse every route without a verified Entra token.
+ *
+ * The REDCap proxy's POST / is the one that matters most: it writes records
+ * into the study database and was, until recently, protected only by an Origin
+ * header — which any non-browser client can set to anything.
+ */
+async function checkWorkerAuth() {
+  console.log('\nWorkers — no route may be reachable without Entra auth');
+
+  const routes = [
+    [REDCAP_PROXY, 'POST', '/', 'redcap import'],
+    [REDCAP_PROXY, 'GET', '/records', 'redcap export'],
+    [TURSO_PROXY, 'GET', '/sessions', 'turso pull'],
+    [TURSO_PROXY, 'POST', '/sessions/push', 'turso push'],
+    [TURSO_PROXY, 'POST', '/sessions/delete', 'turso delete'],
+  ];
+
+  for (const [base, method, path, label] of routes) {
+    const url = `${base}${path}`;
+    const body = method === 'POST'
+      ? { headers: { 'content-type': 'application/json' }, body: '{}' }
+      : {};
+
+    let res;
+    try {
+      res = await fetch(url, { method, ...body });
+    } catch (e) {
+      fail(`${label} (${method} ${path}) unreachable`, String(e.message));
+      continue;
+    }
+
+    if (res.status === 401 || res.status === 403) {
+      pass(`${label} rejects anonymous (${res.status})`);
+    } else if (res.ok) {
+      fail(
+        `${label} RESPONDED to an unauthenticated caller (${res.status})`,
+        (await res.text()).slice(0, 160),
+      );
+      continue;
+    } else if (res.status === 404) {
+      fail(
+        `${label} returned 404 — Worker not deployed, or the route was renamed`,
+        `checked ${method} ${url}`,
+      );
+      continue;
+    } else if (res.status === 400 || res.status === 422) {
+      // The request got past authentication and was rejected by payload
+      // validation instead. That is the signature of an unauthenticated
+      // endpoint, not a protected one.
+      fail(
+        `${label} reached request VALIDATION without a token (${res.status}) — the route is unauthenticated`,
+        `a protected route rejects with 401 before parsing the body`,
+      );
+      continue;
+    } else {
+      fail(`${label} unexpected status ${res.status} for anonymous request`);
+      continue;
+    }
+
+    const forged = await fetch(url, {
+      method,
+      headers: { authorization: `Bearer ${forgedToken()}`, ...(body.headers || {}) },
+      ...(body.body ? { body: body.body } : {}),
+    });
+    if (forged.ok) {
+      fail(`${label} ACCEPTED a forged unsigned token (${forged.status})`);
+    } else if (forged.status === 401 || forged.status === 403) {
+      pass(`${label} rejects a forged token (${forged.status})`);
+    } else {
+      fail(`${label} unexpected status ${forged.status} for forged token`);
+    }
+  }
+}
+
 async function checkNoSecretsServed() {
   console.log('\nServed assets — no credential may reach the browser');
 
@@ -202,6 +287,7 @@ async function main() {
   console.log(`time:   ${new Date().toISOString()}`);
 
   await checkEndpointAuth();
+  await checkWorkerAuth();
   await checkNoSecretsServed();
   await checkHeaders();
 

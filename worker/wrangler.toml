@@ -2,8 +2,37 @@ name = "epsa-redcap-proxy"
 main = "redcap-proxy.js"
 compatibility_date = "2026-06-17"
 
-# Secrets (set via `wrangler secret put --config worker/wrangler.toml`):
-#   REDCAP_TOKEN
-#   REDCAP_API_URL
-#   ALLOWED_ORIGIN
-#   DASHBOARD_SECRET
+# CANONICAL. The epsa-screening-tool repo used to define a Worker of this same
+# name from a different source file. Both deployed to the same account, so
+# whichever shipped last replaced the other — and only one had rate limiting.
+# That duplicate has been removed; deploy this Worker only from this repo.
+
+# Secrets (set once, never in code):
+#   wrangler secret put REDCAP_TOKEN   --config worker/wrangler.toml
+#   wrangler secret put REDCAP_API_URL --config worker/wrangler.toml
+#
+# DASHBOARD_SECRET is no longer used. Both routes now require a verified
+# Mount Sinai Entra token instead of a static shared secret. Remove the old
+# value once this is deployed:
+#   wrangler secret delete DASHBOARD_SECRET --config worker/wrangler.toml
+
+[vars]
+# Public identifiers, not secrets — the same values the browser uses for MSAL
+# login. Token verification compares a token's `aud` against AZURE_CLIENT_ID,
+# so these MUST be set or every request is rejected.
+AZURE_CLIENT_ID = ""
+AZURE_TENANT_ID = ""
+
+# Comma-separated exact origins permitted to call this Worker: the screening
+# tool and the admin dashboard. Defence in depth only — the Entra token check
+# is the actual access control, since an Origin header means nothing outside a
+# browser. ALLOWED_ORIGIN (singular) is still honoured for back-compat.
+ALLOWED_ORIGINS = ""
+
+# Rate limiting is keyed on the authenticated identity. Without this binding
+# the limiter silently no-ops, so create the namespace before going live:
+#   wrangler kv namespace create RATE_LIMIT_KV
+# then paste the id below and uncomment.
+# [[kv_namespaces]]
+# binding = "RATE_LIMIT_KV"
+# id = "<your-kv-namespace-id>"
