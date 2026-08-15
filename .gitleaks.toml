@@ -1,0 +1,58 @@
+# gitleaks configuration for the ePSA admin dashboard.
+#
+# Extends the upstream default ruleset rather than replacing it, so new rules
+# added upstream are picked up automatically.
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "redcap-api-token"
+description = "REDCap API token (32 uppercase hex chars near a redcap keyword)"
+regex = '''(?i)redcap[^\n]{0,40}\b[0-9A-F]{32}\b'''
+keywords = ["redcap"]
+
+[[rules]]
+id = "turso-auth-token"
+description = "Turso database auth token (literal value)"
+# Turso tokens are three-part JWTs. Requiring that shape avoids matching code
+# that merely REFERENCES the variable — e.g. the historical
+#   TURSO_AUTH_TOKEN = import.meta.env.VITE_TURSO_AUTH_TOKEN
+# in src/config/env.js (commit afad9344), which was a build-config problem
+# rather than a committed secret. That class of bug is caught by
+# security/check-vite-env.sh instead.
+regex = '''(?i)turso[_-]?auth[_-]?token['"\s:=]+eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}'''
+keywords = ["turso"]
+
+[[rules]]
+id = "firebase-service-account-inline"
+description = "Firebase service account JSON pasted inline"
+# FIREBASE_SERVICE_ACCOUNT is configured as a single-line JSON blob in the
+# Cloudflare Pages dashboard. That makes pasting it into a file or a workflow
+# an easy mistake to make.
+regex = '''"private_key"\s*:\s*"-----BEGIN'''
+keywords = ["private_key"]
+
+[allowlist]
+description = "Documented placeholders and public-by-design values"
+
+regexTarget = "match"
+
+paths = [
+  # Template showing the SHAPE of each credential; contains no real values.
+  '''\.env\.example$''',
+  '''(^|/)node_modules/''',
+  '''package-lock\.json$''',
+]
+
+regexes = [
+  '''your_[a-z_]*token''',
+  '''YOUR_[A-Z_]*TOKEN''',
+  '''xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx''',
+  '''(?i)\bplaceholder\b''',
+  '''\.\.\.''',
+
+  # A Firebase Web API key is not a secret — see the e-psa config for the
+  # full rationale. Access is governed by Firestore/Storage rules.
+  '''AIza[0-9A-Za-z_-]{35}''',
+]

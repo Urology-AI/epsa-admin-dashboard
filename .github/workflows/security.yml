@@ -1,0 +1,119 @@
+name: Security
+
+# Layer 2 of the audit stack: runs on every change, before anything ships.
+#   Layer 1 = .githooks/pre-push (blocks secrets at the developer's machine)
+#   Layer 2 = this workflow
+#   Layer 3 = security-nightly.yml (probes what is actually deployed)
+#
+# This dashboard holds the highest-value credentials in the system: a Firebase
+# service account (full Admin SDK access, bypasses all security rules), a Turso
+# token, and a REDCap API token. None of them may ever reach the browser.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secrets:
+    name: Secret scan (full history)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # A secret committed and later "removed" is still published and still
+          # valid, so the whole history has to be scanned, not just the diff.
+          fetch-depth: 0
+
+      # Invoking the binary directly rather than gitleaks/gitleaks-action@v2:
+      # that action requires a paid GITLEAKS_LICENSE for organization-owned
+      # repos, and these live under the Urology-AI org. Same scanner, same
+      # config, no licence gate.
+      - name: Install gitleaks
+        run: |
+          VERSION=8.30.1
+          curl -sSL -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          sudo mv /tmp/gitleaks /usr/local/bin/
+          gitleaks version
+
+      - name: Run gitleaks
+        run: gitleaks git --config .gitleaks.toml --redact --exit-code 1 .
+
+  vite-exposure:
+    name: No browser-exposed secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Catches the class of bug that never shows up in git history: a
+      # credential inlined into the bundle by a VITE_ prefix. This repo shipped
+      # exactly that bug once (VITE_TURSO_AUTH_TOKEN, commit afad9344).
+      - name: Check for VITE_-prefixed secrets
+        run: |
+          ./security/check-vite-env.sh \
+            src \
+            .env.example \
+            .github/workflows/deploy.yml
+
+  bundle:
+    name: Built bundle contains no secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build dashboard
+        env:
+          VITE_AZURE_CLIENT_ID: ${{ secrets.VITE_AZURE_CLIENT_ID }}
+          VITE_AZURE_TENANT_ID: ${{ secrets.VITE_AZURE_TENANT_ID }}
+        run: npm run build
+
+      # Scans the real artifact, built the same way the deploy workflow builds
+      # it — so a leak introduced by build config, not source, is still caught.
+      - name: Scan built output
+        run: ./security/scan-bundle.sh dist
+
+  server-only-secrets:
+    name: Server secrets stay in functions/
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Defence in depth alongside the VITE_ check: assert the high-value
+      # credentials are READ only from Pages Functions and the Worker, never
+      # from browser source under src/.
+      - name: Assert no server credentials read from src/
+        run: ./security/check-server-secrets.sh src
+
+  dependencies:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      # Report advisories without failing: they land independently of any
+      # change here, and a permanently red check trains people to ignore the
+      # whole workflow, including the checks that do gate merges.
+      - run: npm audit --audit-level=high || true
