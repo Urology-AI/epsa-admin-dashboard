@@ -1,0 +1,85 @@
+name: Security nightly
+
+# Layer 3: probe what is actually DEPLOYED.
+#
+# CI (security.yml) proves the committed code is correct. It cannot prove the
+# deployed thing matches — a rolled-back deploy, a hand-edit in the Cloudflare
+# dashboard, or an env var cleared by mistake all leave the repo green while
+# production is wrong. This runs against the live origin every night.
+
+on:
+  schedule:
+    # 03:00 UTC ≈ 23:00 US Eastern — the "end of the day" check.
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      origin:
+        description: Origin to probe (defaults to the production Pages URL)
+        required: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  probe:
+    name: Probe deployed dashboard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Probe production
+        id: probe
+        env:
+          DASHBOARD_ORIGIN: ${{ github.event.inputs.origin || vars.DASHBOARD_ORIGIN || 'https://epsa-admin-dashboard.pages.dev' }}
+        run: |
+          set -o pipefail
+          node security/probe-production.mjs 2>&1 | tee probe-output.txt
+
+      - name: Open an issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let output = 'probe produced no output';
+            try { output = fs.readFileSync('probe-output.txt', 'utf8'); } catch {}
+
+            const title = 'Nightly security probe failed (admin dashboard)';
+
+            // Reuse one open issue rather than filing a new one every night.
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'security-probe',
+            });
+
+            const body = [
+              `Probe run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              '',
+              '```',
+              output.slice(0, 60000),
+              '```',
+            ].join('\n');
+
+            if (existing.data.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.data[0].number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                labels: ['security-probe'],
+                body,
+              });
+            }

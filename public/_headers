@@ -1,0 +1,22 @@
+# Cloudflare Pages security headers.
+#
+# Vite copies everything in public/ to the root of dist/, and Pages reads
+# _headers from there at deploy time.
+#
+# Before this file the deployed dashboard sent referrer-policy and nosniff but
+# nothing preventing framing — an admin console with a live Firebase service
+# account behind it could be embedded in a third-party page and clickjacked.
+
+/*
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=()
+  Cross-Origin-Opener-Policy: same-origin
+
+# The MSAL redirect flow posts back to the app origin; no-store keeps the
+# HTML shell (and any token fragment in it) out of shared caches.
+/index.html
+  Cache-Control: no-store

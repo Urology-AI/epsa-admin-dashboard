@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+#
+# Layer 1: block secrets before they leave this machine.
+#
+# This is the only layer that PREVENTS rather than detects. Once a secret
+# reaches GitHub it must be treated as compromised and rotated, even if the
+# commit is deleted seconds later — pushes are mirrored, cached, and indexed.
+#
+# This repo's credentials are the most dangerous in the system: the Firebase
+# service account bypasses every Firestore and Storage rule.
+#
+# Install:  git config core.hooksPath .githooks
+# Bypass:   git push --no-verify   (use only when you are certain)
+
+set -uo pipefail
+
+RED=$'\033[31m'; YELLOW=$'\033[33m'; RESET=$'\033[0m'
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "${YELLOW}pre-push: gitleaks not installed — secret scan SKIPPED.${RESET}"
+  echo "  brew install gitleaks"
+  echo "  (CI will still scan, but a secret pushed now is already public.)"
+  exit 0
+fi
+
+echo "pre-push: scanning staged commits for secrets…"
+
+range=""
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+  [[ "$local_sha" =~ ^0+$ ]] && continue
+  if [[ "$remote_sha" =~ ^0+$ ]]; then
+    range=""
+  else
+    range="${remote_sha}..${local_sha}"
+  fi
+done
+
+if [ -n "$range" ]; then
+  gitleaks git --config .gitleaks.toml --redact --log-opts="$range" .
+else
+  gitleaks git --config .gitleaks.toml --redact .
+fi
+status=$?
+
+if [ "$status" -ne 0 ]; then
+  echo ""
+  echo "${RED}pre-push BLOCKED: a secret was detected in the commits you are pushing.${RESET}"
+  echo ""
+  echo "  Values are redacted above. To see them:  gitleaks git --config .gitleaks.toml ."
+  echo ""
+  echo "  If it is a REAL secret: rotate it first, then rewrite the commit."
+  echo "  A Firebase service account must be rotated in the Google Cloud console."
+  echo "  If it is a false positive: add a narrow entry to .gitleaks.toml"
+  echo "  (allowlist regexes match the full line — see regexTarget there)."
+  echo ""
+  exit 1
+fi
+
+echo "pre-push: no secrets detected."
+
+# Catch the two exposure classes that never appear in git history at all.
+fail=0
+
+if [ -x ./security/check-vite-env.sh ]; then
+  if ! ./security/check-vite-env.sh src .env.example >/dev/null 2>&1; then
+    echo ""
+    echo "${RED}pre-push BLOCKED: a credential would ship to the browser bundle.${RESET}"
+    ./security/check-vite-env.sh src .env.example
+    fail=1
+  fi
+fi
+
+if [ -x ./security/check-server-secrets.sh ]; then
+  if ! ./security/check-server-secrets.sh src >/dev/null 2>&1; then
+    echo ""
+    echo "${RED}pre-push BLOCKED: a server-only credential is read from src/.${RESET}"
+    ./security/check-server-secrets.sh src
+    fail=1
+  fi
+fi
+
+exit "$fail"

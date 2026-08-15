@@ -1,0 +1,16 @@
+# Known VITE_-prefixed secrets shipped to the browser bundle.
+#
+# Anything listed here is PUBLIC to anyone who loads the page. Listing a
+# variable does not make it safe — it records an accepted, outstanding risk so
+# that check-vite-env.sh can still fail the build on anything NEW.
+#
+# This file is intentionally EMPTY.
+#
+# It was not always: src/config/env.js once read the Turso database credential
+# as `import.meta.env.VITE_TURSO_AUTH_TOKEN` (commit afad9344, 2026-06-17),
+# which inlined it into every deployed build. Turso and service-account access
+# now live server-side in functions/, and only the public Azure AD client and
+# tenant IDs remain VITE_-prefixed.
+#
+# Keep it empty. Adding a line requires a deliberate decision and, in nearly
+# every case, rotating the credential first.
