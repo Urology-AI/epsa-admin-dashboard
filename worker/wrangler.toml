@@ -27,13 +27,18 @@ AZURE_TENANT_ID = "77e89d61-570f-43b0-b9e4-634f462e34b8"
 # no trailing slash): the screening tool submits records, the admin dashboard
 # reads them back.
 #
+# epsa.mssm.edu is the screening tool's production domain — the one staff
+# actually use. Listing only its vercel.app platform hostname meant every
+# REDCap submission from the real site was refused with 403 before the token
+# was even examined.
+#
 # Both apps authenticate against the SAME Azure app registration
 # (38873359-...), so AZURE_CLIENT_ID above is a single value. It is parsed as a
 # comma-separated allowlist, so a second registration can be added without a
 # code change. Defence in depth only — the Entra token check
 # is the actual access control, since an Origin header means nothing outside a
 # browser. ALLOWED_ORIGIN (singular) is still honoured for back-compat.
-ALLOWED_ORIGINS = "https://epsa-screening-tool.vercel.app,https://epsa-admin-dashboard.pages.dev"
+ALLOWED_ORIGINS = "https://epsa.mssm.edu,https://epsa-screening-tool.vercel.app,https://epsa-admin-dashboard.pages.dev"
 
 # Rate limiting is keyed on the authenticated identity. Without this binding
 # the limiter silently no-ops, so create the namespace before going live:
