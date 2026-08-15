@@ -11,14 +11,17 @@
  * CI proves the committed code is correct. This proves the deployed thing is.
  *
  * Env:
- *   DASHBOARD_ORIGIN   default: https://epsa-admin-dashboard.pages.dev
+ *   DASHBOARD_ORIGIN   default: https://epsa-admin.urology.edu.eu.org
  *   REDCAP_PROXY_URL   default: https://epsa-redcap-proxy.e-psa.workers.dev
  *   TURSO_PROXY_URL    default: https://epsa-turso-proxy.e-psa.workers.dev
  *
  * Exit: 0 all checks pass, 1 one or more FAILED, 2 could not run.
  */
 
-const ORIGIN = (process.env.DASHBOARD_ORIGIN || 'https://epsa-admin-dashboard.pages.dev')
+// The custom domain is what staff actually load, so that is what the
+// nightly probe checks. The pages.dev hostname still serves the same
+// deployment; override DASHBOARD_ORIGIN to point at it or at a preview.
+const ORIGIN = (process.env.DASHBOARD_ORIGIN || 'https://epsa-admin.urology.edu.eu.org')
   .replace(/\/$/, '');
 
 // The Workers are part of the same trust boundary: they hold the REDCap and
