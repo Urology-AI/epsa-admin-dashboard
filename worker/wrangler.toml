@@ -20,14 +20,20 @@ compatibility_date = "2026-06-17"
 # Public identifiers, not secrets — the same values the browser uses for MSAL
 # login. Token verification compares a token's `aud` against AZURE_CLIENT_ID,
 # so these MUST be set or every request is rejected.
-AZURE_CLIENT_ID = ""
-AZURE_TENANT_ID = ""
+AZURE_CLIENT_ID = "38873359-3e5d-46a4-9b0c-6c8b682b2d6e"
+AZURE_TENANT_ID = "77e89d61-570f-43b0-b9e4-634f462e34b8"
 
-# Comma-separated exact origins permitted to call this Worker: the screening
-# tool and the admin dashboard. Defence in depth only — the Entra token check
+# Comma-separated EXACT origins permitted to call this Worker (no wildcards,
+# no trailing slash): the screening tool submits records, the admin dashboard
+# reads them back.
+#
+# Both apps authenticate against the SAME Azure app registration
+# (38873359-...), so AZURE_CLIENT_ID above is a single value. It is parsed as a
+# comma-separated allowlist, so a second registration can be added without a
+# code change. Defence in depth only — the Entra token check
 # is the actual access control, since an Origin header means nothing outside a
 # browser. ALLOWED_ORIGIN (singular) is still honoured for back-compat.
-ALLOWED_ORIGINS = ""
+ALLOWED_ORIGINS = "https://epsa-screening-tool.vercel.app,https://epsa-admin-dashboard.pages.dev"
 
 # Rate limiting is keyed on the authenticated identity. Without this binding
 # the limiter silently no-ops, so create the namespace before going live:

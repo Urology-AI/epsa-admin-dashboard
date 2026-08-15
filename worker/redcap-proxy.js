@@ -81,11 +81,20 @@ async function verifyMsalToken(authHeader, env) {
     const payload = JSON.parse(b64url(parts[1]));
 
     const tenantId = env.AZURE_TENANT_ID;
-    const clientId = env.AZURE_CLIENT_ID;
-    if (!tenantId || !clientId) return null;
+
+    // AZURE_CLIENT_ID is a comma-separated ALLOWLIST of accepted audiences,
+    // not a single value. This Worker is called by two different apps — the
+    // screening tool (POST /) and the admin dashboard (GET /records) — and if
+    // they are separate Azure app registrations their tokens carry different
+    // `aud` claims. A single-value check would silently reject one of them.
+    //
+    // Still strict: exact GUID matches only, no wildcards or prefixes.
+    const allowedAudiences = (env.AZURE_CLIENT_ID || '')
+      .split(',').map((x) => x.trim()).filter(Boolean);
+    if (!tenantId || allowedAudiences.length === 0) return null;
 
     if (payload.exp < Math.floor(Date.now() / 1000)) return null;
-    if (payload.aud !== clientId) return null;
+    if (!allowedAudiences.includes(payload.aud)) return null;
 
     const validIssuers = [
       `https://login.microsoftonline.com/${tenantId}/v2.0`,
