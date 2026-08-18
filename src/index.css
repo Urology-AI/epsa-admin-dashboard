@@ -1,6 +1,8 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
+  /* ── This dashboard's own dark-ops theme — unchanged, still authoritative
+       for this app's existing dark surfaces/layout. ── */
   --bg: #0f1117;
   --surface: #1a1d27;
   --surface2: #22263a;
@@ -17,12 +19,60 @@
   --radius: 10px;
   --radius-sm: 6px;
   --shadow: 0 4px 24px rgba(0,0,0,0.4);
+
+  /* ── ePSA brand tokens — Phase 2 design-system unification.
+       Canonical source: e-psa/frontend/src/App.css (mirror any change
+       there; also mirrored in epsa-screening-tool/src/App.css). Additive
+       only — this dashboard's own --bg/--surface/--accent/etc. above remain
+       authoritative for its existing dark layout. Use these for any new
+       component that should read as ePSA-branded (e.g. a shared header,
+       risk badges matching the patient-facing apps) rather than reaching
+       for a one-off hex value. ── */
+  --ms-cyan:       #0288d1;
+  --ms-cyan-10:    #e1f5fe;
+  --ms-cyan-20:    #b3e5fc;
+  --ms-magenta:    #d32f2f;   /* High-Risk badge / urgent alerts */
+  --ms-magenta-10: #ffebee;
+  --ms-magenta-20: #ffcdd2;
+  --ms-navy:       #1a3a52;
+  --ms-navy-10:    #e8f0f5;
+  --ms-navy-20:    #b8ccd8;
+  --ms-black:      #0d1b26;
+  --ms-gray-100:   #F5F5F7;
+  --ms-gray-200:   #E8E8EA;
+  --ms-gray-400:   #AFAFB5;
+  --ms-gray-600:   #6E6E77;
+  --ms-gray-800:   #2D2D35;
+
+  --brand-950: #0d1b26;
+  --brand-900: #1a3a52;
+  --brand-800: #1a3a52;
+  --brand-700: #1a3a52;
+  --brand-600: #0277bd;
+  --brand-500: #0288d1;
+  --brand-400: #b3e5fc;
+  --brand-100: #e1f5fe;
+  --brand-50:  #e1f5fe;
+
+  --risk-lower:       #1B7A4A;   /* Low Risk */
+  --risk-lower-bg:    #E8F5EE;
+  --risk-moderate:    #C97B00;   /* Intermediate Risk */
+  --risk-moderate-bg: #FEF3E2;
+  --risk-higher:      #C0392B;   /* Elevated Risk */
+  --risk-higher-bg:   #FDECEA;
+
+  --success-600: #1B7A4A;
+  --success-50:  #E8F5EE;
+  --warning-600: #C97B00;
+  --warning-50:  #FEF3E2;
+  --error-600:   #C0392B;
+  --error-50:    #FDECEA;
 }
 
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 14px;
   line-height: 1.5;
   min-height: 100vh;
