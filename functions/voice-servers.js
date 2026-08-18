@@ -17,8 +17,14 @@ import { verifyMsalToken, unauthorized } from './_auth.js';
 const JSON_CT = { 'Content-Type': 'application/json' };
 const VOICE_SERVERS_DOC = 'appConfig/voiceServers';
 
+// Mirrors DEFAULT_VOICE_SERVERS in e-psa's frontend/src/utils/voiceServers.js
+// — Kokoro (cloud) first since it's cheap/always-on/no-setup; Local (dev) is
+// for developing against the actual cloned Dr. Tewari voice.
 const DEFAULT_SERVERS = {
-  servers: [{ name: 'Local (dev)', url: 'http://localhost:8000' }],
+  servers: [
+    { name: 'Kokoro (cloud)', url: 'https://adityakiwi--kokoro-tts-kokoroserver-web.modal.run' },
+    { name: 'Local (dev)', url: 'http://localhost:8000' },
+  ],
 };
 
 export async function onRequestOptions() {
