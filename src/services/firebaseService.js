@@ -15,3 +15,13 @@ export async function fetchCalculatorSessions({ limit = 200 } = {}) {
   }
   return res.json();
 }
+
+export async function deleteCalculatorSession(id) {
+  const headers = await getAuthHeader();
+  const res = await fetch(`/firebase-sessions?id=${encodeURIComponent(id)}`, { method: 'DELETE', headers });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
