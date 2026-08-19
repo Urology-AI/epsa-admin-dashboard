@@ -18,6 +18,52 @@ export async function onRequestOptions() {
   return new Response(null, { status: 204 });
 }
 
+export async function onRequestDelete({ env, request }) {
+  const user = await verifyMsalToken(request.headers.get('Authorization'), env);
+  if (!user) return unauthorized();
+
+  const raw = env.FIREBASE_SERVICE_ACCOUNT;
+  if (!raw) {
+    return new Response(JSON.stringify({ error: 'Firebase service account not configured' }), {
+      status: 503, headers: JSON_CT,
+    });
+  }
+
+  let sa;
+  try { sa = JSON.parse(raw); } catch {
+    return new Response(JSON.stringify({ error: 'Invalid FIREBASE_SERVICE_ACCOUNT JSON' }), {
+      status: 500, headers: JSON_CT,
+    });
+  }
+
+  const url = new URL(request.url);
+  const id  = url.searchParams.get('id');
+  if (!id) {
+    return new Response(JSON.stringify({ error: 'Missing id query parameter' }), {
+      status: 400, headers: JSON_CT,
+    });
+  }
+
+  let token;
+  try { token = await getAccessToken(sa); } catch (err) {
+    return new Response(JSON.stringify({ error: 'Failed to authenticate with Google', detail: err.message }), {
+      status: 502, headers: JSON_CT,
+    });
+  }
+
+  const docUrl = `https://firestore.googleapis.com/v1/projects/${sa.project_id}/databases/(default)/documents/sessions/${id}`;
+  const fsRes  = await fetch(docUrl, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+
+  if (!fsRes.ok) {
+    const detail = await fsRes.json().catch(() => ({}));
+    return new Response(JSON.stringify({ error: 'Firestore delete error', detail }), {
+      status: 502, headers: JSON_CT,
+    });
+  }
+
+  return new Response(JSON.stringify({ success: true, id }), { status: 200, headers: JSON_CT });
+}
+
 export async function onRequestGet({ env, request }) {
   const user = await verifyMsalToken(request.headers.get('Authorization'), env);
   if (!user) return unauthorized();

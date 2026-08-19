@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { RefreshCw, ChevronDown, ChevronRight, DatabaseZap } from 'lucide-react';
+import { RefreshCw, ChevronDown, ChevronRight, DatabaseZap, Trash2 } from 'lucide-react';
 import { getAuthHeader } from '../../services/auth.js';
+import { deleteCalculatorSession } from '../../services/firebaseService.js';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -76,6 +77,24 @@ function ResultBadge({ tierKey, score }) {
   );
 }
 
+function researchConsentOf(s) {
+  // Sessions created before the consent-on-session field existed have neither
+  // key — that's "unknown", distinct from an explicit decline.
+  if (s.researchConsent !== undefined) return s.researchConsent;
+  if (s.consentToContact !== undefined) return s.consentToContact;
+  return null;
+}
+
+function ConsentBadge({ s }) {
+  const consent = researchConsentOf(s);
+  if (consent === null || consent === undefined) {
+    return <span className="badge badge-amber" title="No consent recorded on this session (pre-dates consent tracking)">Unknown</span>;
+  }
+  return consent
+    ? <span className="badge badge-green">Consented</span>
+    : <span className="badge badge-red">Declined</span>;
+}
+
 function SessionDetail({ s }) {
   const pre  = s.step1 ?? s.step1Partial;
   const post = s.step2;
@@ -105,6 +124,10 @@ function SessionDetail({ s }) {
         <div className="record-field">
           <span className="field-key">Expires</span>
           <span className="field-val">{fmtDate(s.expiresAt)}</span>
+        </div>
+        <div className="record-field">
+          <span className="field-key">Research Consent</span>
+          <span className="field-val"><ConsentBadge s={s} /></span>
         </div>
       </div>
 
@@ -183,7 +206,21 @@ export default function CalculatorTab({ sessions, loading, error, onRefresh }) {
   const [expanded,      setExpanded]      = useState(new Set());
   const [backfillState, setBackfillState] = useState('idle'); // idle | running | done | error
   const [backfillMsg,   setBackfillMsg]   = useState('');
+  const [deletingId,    setDeletingId]    = useState(null);
   const list = sessions ?? [];
+
+  async function handleDelete(id) {
+    if (!window.confirm(`Permanently delete session ${id}? This cannot be undone.`)) return;
+    setDeletingId(id);
+    try {
+      await deleteCalculatorSession(id);
+      onRefresh?.();
+    } catch (err) {
+      window.alert(`Delete failed: ${err.message}`);
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   async function handleBackfill() {
     setBackfillState('running');
@@ -250,6 +287,8 @@ export default function CalculatorTab({ sessions, loading, error, onRefresh }) {
                 <th>Status</th>
                 <th>Stage</th>
                 <th>Risk Tier</th>
+                <th>Consent</th>
+                <th style={{ width: 32 }} />
               </tr>
             </thead>
             <tbody>
@@ -272,10 +311,21 @@ export default function CalculatorTab({ sessions, loading, error, onRefresh }) {
                           ? <ResultBadge tierKey={tierKey} />
                           : '—'}
                       </td>
+                      <td><ConsentBadge s={s} /></td>
+                      <td>
+                        <button
+                          className="icon-btn"
+                          title="Delete session"
+                          disabled={deletingId === s.id}
+                          onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
                     </tr>
                     {open && (
                       <tr className="session-detail-row">
-                        <td colSpan={6}>
+                        <td colSpan={8}>
                           <SessionDetail s={s} />
                         </td>
                       </tr>
