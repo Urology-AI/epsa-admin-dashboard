@@ -1,0 +1,11 @@
+{
+  "syncedAt": "2026-09-09T19:14:04.933Z",
+  "sourcePath": "/tmp/epsa-engine-m2g",
+  "sourceGit": {
+    "sha": "8ab5666b4d21b59dfe783da3c4fdb2c79162d645",
+    "branch": "model2-guideline-gaps-clean",
+    "dirty": false
+  },
+  "packageVersion": "0.2.5",
+  "engineVersion": "0.2.5"
+}

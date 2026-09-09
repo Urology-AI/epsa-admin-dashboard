@@ -1,4 +1,5 @@
 import { DEFAULT_CALCULATOR_CONFIG } from './calculatorConfig.js';
+import { ENGINE_VERSION } from './version.js';
 
 // =============================================================================
 // ePSA CALCULATOR ENGINE v4
@@ -140,6 +141,13 @@ export const MODEL_ACCURACY = {
 };
 
 /**
+ * @deprecated Superseded by `predictBiopsyRisk` (biopsyRisk.js), which tracks
+ * the actively-retrained model from Urology-AI/biopsy-prediction (currently
+ * v4, N=126, AUC 0.7389 — vs. this function's frozen N=96/AUC 0.591 snapshot
+ * from 2026-06-02). Kept only because epsaEngine.test.js asserts against it
+ * for historical regression coverage; do not wire this into any new caller —
+ * use `predictBiopsyRisk` instead.
+ *
  * Calculates predicted probability of GG≥2 (clinically significant) prostate cancer
  * from PI-RADS score and PSA using logistic regression trained on N=96 patients.
  *
@@ -471,6 +479,17 @@ export const calculateDynamicEPsa = (formData, customConfig = null) => {
       score: 0,
       guidelineTrack: { rawScore: 0, maxScore: 50, percent: 0, hasLifeExpectancyFlag: ageNum > 75, label: 'Guideline-based score (USPSTF/NCCN/AUA)', description: 'Reflects only age, race, family history, and germline mutation status — the factors directly recognized by major screening guidelines.' },
       epsaExtendedProfile: { rawScore: 0, maxScore: 80, percent: 0, label: 'ePSA extended profile', description: 'Adds lifestyle and research-based factors as contextual layers on top of the guideline-based score.' },
+      // Age-gate case: outside the guideline age range — always screening_not_indicated
+      // per spec ("patient is below, or grossly above, the guideline age range").
+      part1Tier: {
+        key: 'screening_not_indicated',
+        label: 'Screening Not Indicated',
+        description: 'Guideline criteria not met and no extended risk factors; patient is below, or grossly above, the guideline age range. PSA testing not warranted; no follow-up beyond routine care.',
+        guidelineCriteriaMet: false,
+        extendedRiskScore: 0,
+        extendedRiskStrength: 'none',
+        priorBiopsyHistory: formData.priorBiopsyHistory === true || formData.priorBiopsyHistory === 'yes',
+      },
       age: ageNum,
       bmi: Number(bmi).toFixed(1),
       ipssTotal,
@@ -914,7 +933,15 @@ export const calculateDynamicEPsa = (formData, customConfig = null) => {
   // Routine PSA screening above age 70 is an individualized shared decision
   // based on overall health and life expectancy. Above 75 is handled separately
   // by the `aboveMaxScreeningAge` flag.
-  if (ageNum >= 70 && ageNum <= 75 && psaRecommendReason === null) {
+  // FIX (test-case audit, ePSA analysis.xlsx C06): individualized-SDM framing at 70-75
+  // takes precedence over score_threshold/age_guideline_50_69/family_history_override —
+  // those steps produce an assertive "recommended" framing that doesn't reflect the
+  // guideline's explicit shift to individualized SDM at this age. It still yields to
+  // high_risk_early_screening (Black ancestry / confirmed germline mutation remains a
+  // strong guideline anchor at any age). Previously this only applied when no earlier
+  // step had already claimed a reason, so family history or an elevated score would
+  // silently suppress the age-70+ SDM framing entirely.
+  if (ageNum >= 70 && ageNum <= 75 && psaRecommendReason !== 'high_risk_early_screening') {
     psaRecommendReason = 'older_shared_decision';
   }
 
@@ -1122,6 +1149,114 @@ export const calculateDynamicEPsa = (formData, customConfig = null) => {
   }, formData.pathwayMode || 'pre_psa');
 
   // ---------------------------------------------------------------------------
+  // Part 1 output-statement tiers (product spec, 4 tiers) — screening_not_indicated /
+  // discussion_optional / discussion_advised_extended_risk / screening_recommended.
+  //
+  // "Guideline criteria met" reuses the SAME psaRecommendReason values already
+  // classified above as guideline-backed (see PSA_GUIDELINE_SUPPORT — these are
+  // the reasons with >0 guideline support, i.e. AUA/SUO 2026 Statements 4/5/6/7,
+  // already cited inline where psaRecommendReason is assigned). 'score_threshold'
+  // is deliberately excluded — it is explicitly an ePSA-model-only finding (0/4
+  // guideline support, see PSA_GUIDELINE_SUPPORT.score_threshold above), not a
+  // guideline criterion.
+  //
+  // "Extended (ePSA) risk factors" = the factors the product spec names as
+  // beyond the guideline definition: family history of breast/ovarian/pancreatic
+  // cancer (hereditaryFhPositive, HBOC/Lynch proxy — LoPC Table 4 p.13; EDPC
+  // p.12, already cited above), non-BRCA germline panel result (panelPositive —
+  // HOXB13/ATM/CHEK2/PALB2/Lynch-MMR, Ewing et al. NEJM 2012; Na et al. Eur Urol
+  // 2017; Raymond et al. 2013, already cited above), Ashkenazi Jewish ancestry
+  // (ashkenaziJewish — BRCA1/2 founder-mutation prevalence, LoPC Table 4 p.13,
+  // already cited above), and prior biopsy history (new field below).
+  // NOTE: brcaStatus (confirmed BRCA1/2) and direct prostate family history are
+  // already part of this engine's `guidelineTrack` (see GUIDELINE_TRACK_ITEMS
+  // above) — they count toward "guideline criteria met", not extended risk,
+  // consistent with how this codebase already partitions guideline vs.
+  // lifestyle/extended factors (see guidelineTrack/epsaExtendedProfile comment
+  // block above).
+  // ---------------------------------------------------------------------------
+  const priorBiopsyHistory =
+    formData.priorBiopsyHistory === true || formData.priorBiopsyHistory === 'yes';
+  // Prior (esp. negative) biopsy history is a recognized input to repeat-biopsy /
+  // continued-surveillance decisions distinct from first-time screening criteria
+  // (NCCN Prostate Cancer Early Detection v1.2024 — repeat-biopsy risk factors;
+  // AUA/SUO 2026 EDPC discussion of biopsy history as a risk-modifying context).
+  // Scored here only for the Part 1 extended-risk tier classification below —
+  // intentionally NOT added to rawScore/MAX_POINTS so MAX_POINTS stays 80 and no
+  // existing score-based test or downstream consumer is affected.
+  const PRIOR_BIOPSY_POINTS = priorBiopsyHistory ? 6 : 0; // same magnitude as hereditaryFhPositive (6 pts) — both indirect/contextual proxies, not direct guideline anchors
+
+  const GUIDELINE_MET_REASONS = new Set([
+    'age_guideline_50_69', 'baseline_psa_45_50', 'high_risk_early_screening',
+    'family_history_override', 'older_shared_decision',
+  ]);
+  const guidelineCriteriaMet = GUIDELINE_MET_REASONS.has(psaRecommendReason);
+
+  // Extended-risk composite score (tier classification only — separate from rawScore).
+  const extendedRiskScore =
+    (hereditaryFhPositive ? 6 : 0) +
+    (ashkenaziJewish ? 4 : 0) +
+    ((panelPositive && !alreadyCountedViaBrca) ? 16 : 0) +
+    PRIOR_BIOPSY_POINTS;
+  // "Strong" vs "limited" extended risk — a composite judgment call the spec asks
+  // us to make from the file's own literature-anchored point weights (see task
+  // instructions: "use existing point/scoring weights ... use a reasonable
+  // threshold on the existing score"). Threshold set at 10 pts = half of the
+  // single strongest extended-only anchor (non-BRCA germline panel positive,
+  // 16 pts — Ewing et al. NEJM 2012; Na et al. Eur Urol 2017; Raymond et al.
+  // 2013), so a germline panel result alone is always "strong", and so is any
+  // combination reaching that weight (e.g. hereditary-cancer FH + Ashkenazi
+  // ancestry = 6+4 = 10 pts, both anchored to LoPC Table 4 p.13 / EDPC p.12-13).
+  // A single weaker proxy alone (e.g. Ashkenazi ancestry only, 4 pts) is "limited".
+  const EXTENDED_RISK_STRONG_THRESHOLD = 10;
+  const extendedRiskStrength = extendedRiskScore === 0
+    ? 'none'
+    : extendedRiskScore >= EXTENDED_RISK_STRONG_THRESHOLD
+      ? 'strong'
+      : 'limited';
+
+  const PART1_TIER_DEFS = {
+    screening_not_indicated: {
+      label: 'Screening Not Indicated',
+      description: 'Guideline criteria not met and no extended risk factors; patient is below, or grossly above, the guideline age range. PSA testing not warranted; no follow-up beyond routine care.',
+    },
+    discussion_optional: {
+      label: 'Discussion Optional',
+      description: 'Guideline criteria not met, but limited extended risk factors are present. Offer shared decision-making — PSA is a reasonable option if the patient values early detection after discussing benefits and harms.',
+    },
+    discussion_advised_extended_risk: {
+      label: 'Discussion Advised (Extended Risk)',
+      description: 'Guideline criteria not met, but strong extended risk factors argue for screening (family history beyond the guideline definition, DDR/germline panel, prior biopsy history, ancestry). Actively recommend a screening discussion and consider PSA.',
+    },
+    screening_recommended: {
+      label: 'Screening Recommended',
+      description: 'Guideline criteria met (USPSTF, AUA, NCCN). Proceed to baseline PSA and set the testing interval according to result and risk profile.',
+    },
+  };
+
+  let part1TierKey;
+  if (guidelineCriteriaMet) {
+    part1TierKey = 'screening_recommended';
+  } else if (ageNum < 40 || ageNum > 75) {
+    part1TierKey = 'screening_not_indicated';
+  } else if (extendedRiskStrength === 'strong') {
+    part1TierKey = 'discussion_advised_extended_risk';
+  } else if (extendedRiskStrength === 'limited') {
+    part1TierKey = 'discussion_optional';
+  } else {
+    part1TierKey = 'screening_not_indicated';
+  }
+  const part1Tier = {
+    key: part1TierKey,
+    label: PART1_TIER_DEFS[part1TierKey].label,
+    description: PART1_TIER_DEFS[part1TierKey].description,
+    guidelineCriteriaMet,
+    extendedRiskScore,
+    extendedRiskStrength,
+    priorBiopsyHistory,
+  };
+
+  // ---------------------------------------------------------------------------
   // Guideline-based score (two-track output) — a clean subset of the full
   // rawScore containing only USPSTF/NCCN/AUA-recognized screening factors: age,
   // race, family history, and germline mutations (BRCA1/2 + expanded panel).
@@ -1158,10 +1293,12 @@ export const calculateDynamicEPsa = (formData, customConfig = null) => {
   return {
     // Provenance — used by the results meta-bar for audit/citation
     computedAt: new Date().toISOString(),
-    engineVersion: '1.0.0',
+    engineVersion: ENGINE_VERSION,
     // Two-track output (additive — see guidelineTrack/epsaExtendedProfile above)
     guidelineTrack,
     epsaExtendedProfile,
+    // Part 1 output-statement tier (product spec, 4 tiers) — see PART1_TIER_DEFS above
+    part1Tier,
     // Core score
     score: scorePercent,
     scoreRange,
@@ -1179,6 +1316,7 @@ export const calculateDynamicEPsa = (formData, customConfig = null) => {
     psaRecommendMessage,
     psaGuidelineSupport,
     psaGuidelineSupportCount,
+    sdmGuide: buildShareModelGuide({ psaRecommendReason, recommendPSA }),
 
     // Legacy tier fields
     tierRisk,
@@ -1188,9 +1326,8 @@ export const calculateDynamicEPsa = (formData, customConfig = null) => {
     // 3-tier classification
     epsaTierIndex,
     epsaTierKey: epsaTierDef.key,
-    epsaTierLabel: (epsaTierIndex === 2 && isHighRiskFlagged)
-      ? 'Strong candidate for PSA testing'
-      : epsaTierDef.label,
+    epsaTierLabel: epsaTierIndex === 2 ? 'Strong candidate for PSA testing' : epsaTierDef.label,
+    tierDrivenByNonGuidelineFactors: false,
     epsaTierScoreRange: epsaTierDef.scoreRange,
     epsaTierNormalizedRange: epsaTierDef.normalizedRange,
     epsaTierBoundaries: { lowMax: 10, intermediateMax: 17, maxScore: MAX_POINTS },
@@ -1233,6 +1370,226 @@ export const calculateDynamicEPsa = (formData, customConfig = null) => {
     skippedFields: Array.from(_skippedFields),
   };
 };
+
+// =============================================================================
+// Shared Decision-Making (SDM) conversation guide — AHRQ SHARE Approach
+// (Seek, Help, Assess, Reach, Evaluate; 2014-2024): https://www.ahrq.gov/sdm/share-approach/index.html
+// Structures the recommendation reason into a "prepare for your visit" guide
+// instead of a single generic sentence (SDM_CLOSING_LINE, above). Purely
+// additive — does not change psaRecommendReason, psaRecommendMessage, or any
+// existing message content; returns null when there is nothing to discuss.
+// =============================================================================
+const SHARE_GUIDE_CONTENT = {
+  score_threshold: {
+    topic: 'Whether to pursue PSA testing based on your ePSA model score',
+    seekPrompt: 'This is a model-flagged discussion, not a guideline mandate — none of the four major guidelines (AUA/SUO, NCCN, EAU, ERSPC) recommend PSA testing based on your age/risk profile alone. Ask your physician to walk through why the ePSA model flagged your score.',
+    helpPrompt: 'Explore your real options for what happens next.',
+    helpOptions: ['Get PSA testing now', 'Wait and re-assess later', 'Decline testing for now'],
+    assessPrompt: 'Talk through what matters most to you before deciding.',
+    considerations: ['Your comfort with a false-positive-prone score', 'Any family history of prostate cancer', 'Your preference for watchful waiting vs. testing now'],
+    reachPrompt: 'Reach a decision together with your physician that reflects your values, not just the model output.',
+    evaluatePrompt: 'Revisit this decision at your next visit — the model finding may change as new information comes in.',
+    guidelineCitation: 'ePSA model finding (0/4 guideline support: AUA/SUO, NCCN, EAU, ERSPC).',
+  },
+  baseline_psa_45_50: {
+    topic: 'Whether to get a baseline PSA now',
+    seekPrompt: 'This is about establishing a reference value for future comparisons, not urgency — ask your physician what a baseline PSA would mean for your future screening plan.',
+    helpPrompt: 'Compare your real options.',
+    helpOptions: ['Get a baseline PSA now', 'Wait until age 50', 'Decline baseline testing'],
+    assessPrompt: 'Consider how much a future comparison point is worth to you.',
+    considerations: ['How much you value having a reference PSA value later', 'Family history of prostate cancer', 'Your general comfort with testing now vs. later'],
+    reachPrompt: 'Decide together whether a baseline value now is worth it for you.',
+    evaluatePrompt: 'If you decline now, revisit this at age 50 when routine screening begins.',
+    guidelineCitation: 'AUA/SUO 2026 (Conditional, Grade B); NCCN Early Detection v1.2024; EAU 2024; ERSPC.',
+  },
+  age_guideline_50_69: {
+    topic: 'Starting or continuing routine PSA screening',
+    seekPrompt: 'This is a routine, strongly-recommended discussion at your age — ask your physician about starting or continuing PSA screening.',
+    helpPrompt: 'Review your options for this screening cycle.',
+    helpOptions: ['Test now', 'Discuss a 2-4 year interval', 'Decline this cycle'],
+    assessPrompt: 'Consider your own history and health before deciding.',
+    considerations: ['Your prior PSA history, if any', 'Comorbidities that may affect life expectancy', 'Your general comfort with routine screening'],
+    reachPrompt: 'Reach a decision on testing and interval together with your physician.',
+    evaluatePrompt: 'Re-evaluate at your next routine visit, typically in 2-4 years.',
+    guidelineCitation: 'AUA/SUO 2026 (Strong, Grade A; every 2-4 years); NCCN Early Detection v1.2024; EAU 2024; ERSPC.',
+  },
+  high_risk_early_screening: {
+    topic: 'Starting PSA screening early due to your high-risk profile',
+    seekPrompt: 'Your Black ancestry and/or a germline mutation (BRCA1/2, ATM, Lynch Syndrome) is the specific reason to discuss earlier screening — ask your physician how this affects your personal risk and timeline.',
+    helpPrompt: 'Explore your options given this elevated risk.',
+    helpOptions: ['Start screening now', 'Discuss timing with a specialist first', 'Decline for now'],
+    assessPrompt: 'Talk through your risk history in detail.',
+    considerations: ['Detailed family cancer history', 'Whether you have had genetic counseling', 'Whether you have discussed hereditary risk with anyone before'],
+    reachPrompt: 'Reach a decision on timing together, informed by your specific risk factors.',
+    evaluatePrompt: 'Revisit at the agreed interval, or sooner if new family history emerges.',
+    guidelineCitation: 'AUA/SUO 2026, NCCN v1.2024, EAU 2024 (Strong; Grade B).',
+  },
+  family_history_override: {
+    topic: 'Starting PSA screening early due to your family history',
+    seekPrompt: 'Your strong family history of prostate cancer is the specific reason to discuss earlier screening — ask your physician how this affects your personal risk and timeline.',
+    helpPrompt: 'Explore your options given this family history.',
+    helpOptions: ['Start screening now', 'Discuss timing with a specialist first', 'Decline for now'],
+    assessPrompt: 'Talk through which relatives were affected and when.',
+    considerations: ['Which relatives were diagnosed with prostate cancer', 'The age at which they were diagnosed', 'Whether genetic counseling has been discussed'],
+    reachPrompt: 'Reach a decision on timing together, informed by your family history.',
+    evaluatePrompt: 'Revisit at the agreed interval, or sooner if new family history emerges.',
+    guidelineCitation: 'AUA/SUO 2026, NCCN v1.2024, EAU 2024 (Strong; Grade B).',
+  },
+  older_shared_decision: {
+    topic: 'Whether to continue PSA screening at your age',
+    seekPrompt: 'At this age the conversation should start with your overall health and life expectancy, not the PSA score itself — ask your physician how they weigh those factors for you specifically.',
+    helpPrompt: 'Weigh all of your options, including stopping screening.',
+    helpOptions: ['Continue screening every 2-4 years', 'Discontinue screening', 'Test once more and reassess'],
+    assessPrompt: 'Consider your overall health picture, not just this score.',
+    considerations: ['Comorbidities and overall functional status', 'Your own view on further cancer workup or treatment at this life stage', 'Whether you have a life expectancy of 10+ years'],
+    reachPrompt: 'Reach a decision together that reflects your health status and personal preferences, including the option to stop.',
+    evaluatePrompt: 'Revisit this decision at each visit as your health status evolves.',
+    guidelineCitation: 'AUA/SUO 2026 (Statement 7, Conditional, Grade B); NCCN Early Detection v1.2024; EAU 2024.',
+  },
+  symptomatic_out_of_guideline: {
+    topic: 'A urinary-symptom evaluation — not a PSA screening recommendation',
+    seekPrompt: 'This is a referral for your urinary symptoms, explicitly not a PSA screening recommendation — ask your physician or urologist to evaluate your symptoms separately from screening.',
+    helpPrompt: 'Explore what a symptom evaluation would involve.',
+    helpOptions: ['Schedule a urological evaluation', 'Discuss symptom management first', 'Wait and monitor symptoms'],
+    assessPrompt: 'Talk through how your symptoms are affecting you.',
+    considerations: ['Your symptom burden and bother (IPSS)', 'Impact on your day-to-day quality of life'],
+    reachPrompt: 'Reach a decision on next steps for your symptoms together.',
+    evaluatePrompt: 'Revisit if symptoms change or do not improve after the agreed plan.',
+    guidelineCitation: 'AUA/SUO BPH/LUTS guidelines (IPSS >= 8 warrants urological evaluation).',
+  },
+  low_risk_followup: {
+    topic: 'Confirming that no action is needed right now',
+    seekPrompt: 'This is a "no action needed now" conversation — ask your physician to confirm routine primary care is appropriate and when to revisit.',
+    helpPrompt: 'Confirm your plan for the next 1-2 years.',
+    helpOptions: ['Continue routine primary care', 'Revisit in 1-2 years'],
+    assessPrompt: 'Use this visit to get reassurance and know when to come back.',
+    considerations: ['Reassurance that no high-risk anchors are present', 'When to return for re-evaluation'],
+    reachPrompt: 'Confirm together that routine follow-up is the right plan for now.',
+    evaluatePrompt: 'Revisit in 1-2 years, or sooner if new risk factors emerge.',
+    guidelineCitation: 'AUA/SUO 2026 routine re-assessment guidance.',
+  },
+  not_recommended: {
+    topic: 'Whether to talk about PSA testing at all right now',
+    seekPrompt: 'Would you like to talk about PSA testing at all right now? There is no specific reason flagged for you today.',
+    helpPrompt: 'Routine age-based screening guidance applies.',
+    helpOptions: ['Discuss routine screening timeline', 'Not right now'],
+    assessPrompt: 'Raise any concerns you have, even if nothing was flagged.',
+    considerations: ['Any patient-initiated concerns about prostate cancer risk'],
+    reachPrompt: 'Decide together whether there is anything worth discussing now.',
+    evaluatePrompt: 'Revisit at your next routine visit.',
+    guidelineCitation: 'Routine age-based screening guidance.',
+  },
+  // Model 3 — MRI recommendation reasons (take priority over Model 1 reasons)
+  psa_elevated: {
+    topic: 'Whether to get an mpMRI before biopsy',
+    seekPrompt: 'Your elevated PSA is the reason an mpMRI is being discussed before any biopsy decision — ask your physician what the MRI would add here.',
+    helpPrompt: 'Compare your real options at this stage.',
+    helpOptions: ['mpMRI before biopsy', 'Biopsy without MRI', 'Watchful waiting'],
+    assessPrompt: 'Consider what matters most to you at this stage of the pathway.',
+    considerations: ['Your comfort with additional imaging before biopsy', 'How your PSA has trended over time', 'Your overall risk tolerance'],
+    reachPrompt: 'Reach a decision together on imaging vs. proceeding directly.',
+    evaluatePrompt: 'Revisit based on the MRI result, if you choose imaging.',
+    guidelineCitation: 'AUA 2026 Statement 13 (Grade A).',
+  },
+  combined_risk_elevated: {
+    topic: 'Whether to get an mpMRI before biopsy',
+    seekPrompt: 'Your combined risk profile is elevated, which is why an mpMRI is being discussed before any biopsy decision — ask your physician what the MRI would add here.',
+    helpPrompt: 'Compare your real options at this stage.',
+    helpOptions: ['mpMRI before biopsy', 'Biopsy without MRI', 'Watchful waiting'],
+    assessPrompt: 'Consider what matters most to you at this stage of the pathway.',
+    considerations: ['Your comfort with additional imaging before biopsy', 'The combination of factors driving this risk estimate', 'Your overall risk tolerance'],
+    reachPrompt: 'Reach a decision together on imaging vs. proceeding directly.',
+    evaluatePrompt: 'Revisit based on the MRI result, if you choose imaging.',
+    guidelineCitation: 'AUA 2026 (combined-risk pathway).',
+  },
+  high_risk_profile: {
+    topic: 'Whether to get an mpMRI before biopsy',
+    seekPrompt: 'Your high-risk profile is the reason an mpMRI is being discussed before any biopsy decision — ask your physician what the MRI would add here.',
+    helpPrompt: 'Compare your real options at this stage.',
+    helpOptions: ['mpMRI before biopsy', 'Biopsy without MRI', 'Watchful waiting'],
+    assessPrompt: 'Consider what matters most to you at this stage of the pathway.',
+    considerations: ['Your comfort with additional imaging before biopsy', 'The specific risk anchors present in your profile', 'Your overall risk tolerance'],
+    reachPrompt: 'Reach a decision together on imaging vs. proceeding directly.',
+    evaluatePrompt: 'Revisit based on the MRI result, if you choose imaging.',
+    guidelineCitation: 'AUA 2026 (high-risk pathway).',
+  },
+  discordance: {
+    topic: 'Whether to get an mpMRI before biopsy',
+    seekPrompt: 'Your ePSA profile is notably higher than your PSA alone suggests, which is why an mpMRI is being discussed before any biopsy decision — ask your physician what is driving this discordance.',
+    helpPrompt: 'Compare your real options at this stage.',
+    helpOptions: ['mpMRI before biopsy', 'Biopsy without MRI', 'Watchful waiting'],
+    assessPrompt: 'Consider what matters most to you at this stage of the pathway.',
+    considerations: ['Your comfort with additional imaging before biopsy', 'What might explain the discordance between PSA and ePSA', 'Your overall risk tolerance'],
+    reachPrompt: 'Reach a decision together on imaging vs. proceeding directly.',
+    evaluatePrompt: 'Revisit based on the MRI result, if you choose imaging.',
+    guidelineCitation: 'AUA/NCCN guidelines (discordance pathway).',
+  },
+  // Model 3 — biopsy recommendation reasons (take priority over MRI/Model 1 reasons)
+  pirads_5: {
+    topic: 'Whether to proceed with a prostate biopsy',
+    seekPrompt: 'Your PI-RADS 5 finding is the reason biopsy is being discussed — ask your physician to walk through what this specific finding means and what a biopsy would involve.',
+    helpPrompt: 'Explore and compare your options — biopsy is not the only path even with a guideline-backed finding.',
+    helpOptions: ['Proceed with biopsy', 'Repeat imaging first', 'Watchful waiting'],
+    assessPrompt: 'Weigh the risks of biopsy alongside its benefit.',
+    considerations: ['Risk of infection from the procedure', 'Risk of detecting an indolent cancer that may never need treatment', 'Your personal risk tolerance'],
+    reachPrompt: 'Reach a decision together that reflects your values, not just the finding.',
+    evaluatePrompt: 'Revisit the plan based on biopsy results, if you proceed.',
+    guidelineCitation: 'AUA/NCCN guidelines (PI-RADS 5).',
+  },
+  pirads_4: {
+    topic: 'Whether to proceed with a prostate biopsy',
+    seekPrompt: 'Your PI-RADS 4 finding is the reason biopsy is being discussed — ask your physician to walk through what this specific finding means and what a biopsy would involve.',
+    helpPrompt: 'Explore and compare your options — biopsy is not the only path even with a guideline-backed finding.',
+    helpOptions: ['Proceed with biopsy', 'Repeat imaging first', 'Watchful waiting'],
+    assessPrompt: 'Weigh the risks of biopsy alongside its benefit.',
+    considerations: ['Risk of infection from the procedure', 'Risk of detecting an indolent cancer that may never need treatment', 'Your personal risk tolerance'],
+    reachPrompt: 'Reach a decision together that reflects your values, not just the finding.',
+    evaluatePrompt: 'Revisit the plan based on biopsy results, if you proceed.',
+    guidelineCitation: 'AUA/NCCN guidelines (PI-RADS 4).',
+  },
+  combined_score_high: {
+    topic: 'Whether to proceed with a prostate biopsy',
+    seekPrompt: 'Your combined risk score is high, which is why biopsy is being discussed — ask your physician to walk through what is driving this score and what a biopsy would involve.',
+    helpPrompt: 'Explore and compare your options — biopsy is not the only path even with a guideline-backed finding.',
+    helpOptions: ['Proceed with biopsy', 'Repeat imaging first', 'Watchful waiting'],
+    assessPrompt: 'Weigh the risks of biopsy alongside its benefit.',
+    considerations: ['Risk of infection from the procedure', 'Risk of detecting an indolent cancer that may never need treatment', 'Your personal risk tolerance'],
+    reachPrompt: 'Reach a decision together that reflects your values, not just the score.',
+    evaluatePrompt: 'Revisit the plan based on biopsy results, if you proceed.',
+    guidelineCitation: 'AUA/NCCN guidelines (combined high-risk score).',
+  },
+  high_risk_discordance: {
+    topic: 'Whether to proceed with a prostate biopsy',
+    seekPrompt: 'A discordance between your high-risk profile and imaging is the reason biopsy is being discussed — ask your physician to walk through what is driving this and what a biopsy would involve.',
+    helpPrompt: 'Explore and compare your options — biopsy is not the only path even with a guideline-backed finding.',
+    helpOptions: ['Proceed with biopsy', 'Repeat imaging first', 'Watchful waiting'],
+    assessPrompt: 'Weigh the risks of biopsy alongside its benefit.',
+    considerations: ['Risk of infection from the procedure', 'Risk of detecting an indolent cancer that may never need treatment', 'Your personal risk tolerance'],
+    reachPrompt: 'Reach a decision together that reflects your values, not just the discordance.',
+    evaluatePrompt: 'Revisit the plan based on biopsy results, if you proceed.',
+    guidelineCitation: 'AUA/NCCN guidelines (high-risk discordance).',
+  },
+};
+
+// AHRQ SHARE Approach (2014-2024): 5-step framework for shared decision-making.
+// https://www.ahrq.gov/sdm/share-approach/index.html
+// Returns null when there is nothing to discuss (no reason assigned at all).
+function buildShareModelGuide({ psaRecommendReason, recommendPSA, mriRecommendReason, biopsyReason }) {
+  const CONTENT = SHARE_GUIDE_CONTENT;
+  const key = biopsyReason || mriRecommendReason || psaRecommendReason
+    || (recommendPSA === false ? 'not_recommended' : null);
+  if (!key || !CONTENT[key]) return null;
+  const c = CONTENT[key];
+  return {
+    topic: c.topic,
+    seek: { prompt: c.seekPrompt },
+    help: { prompt: c.helpPrompt, options: c.helpOptions },
+    assess: { prompt: c.assessPrompt, considerations: c.considerations },
+    reach: { prompt: c.reachPrompt },
+    evaluate: { prompt: c.evaluatePrompt },
+    source: 'AHRQ SHARE Approach (2014-2024); ' + c.guidelineCitation,
+  };
+}
 
 // =============================================================================
 // MODELS 2 & 3 — post_psa / post_mri
@@ -1623,6 +1980,265 @@ export const calculateDynamicEPsaPost = (preResult, postData, customConfig = nul
     hasTwoComorbidities: Boolean(preResult?.highRiskAnchors?.twoComorbidities),
   }, pathwayMode);
 
+  // ---------------------------------------------------------------------------
+  // Part 2 output-statement tiers (product spec, 5 tiers) — normal_routine_interval /
+  // borderline_repeat_advised / gray_zone_confounder_reassess / elevated_imaging_advised /
+  // markedly_elevated_prompt_referral.
+  //
+  // Age-adjusted threshold: reuses AUA_PSA_THRESHOLDS (already defined and cited
+  // above — AUA/SUO 2026 EDPC p.11, Statements 4/6/7: 2.5 ng/mL ages 45-49,
+  // 3.5 ages 50-59, 4.5 ages 60-69, 6.5 ages 70+). Below age 45 (no defined AUA
+  // band), falls back to the 4.0 ng/mL "commonly cited" universal PSA threshold
+  // already used elsewhere in this function for mriRecommendReason='psa_elevated'
+  // (AUA 2026 EDPC p.11).
+  //
+  // Gray-zone upper bound (10.0 ng/mL): the classic PSA "diagnostic gray zone"
+  // (~4-10 ng/mL) established by Catalona WJ et al. "Use of the percentage of
+  // free prostate-specific antigen to enhance differentiation of prostate
+  // cancer from benign prostatic disease." JAMA. 1998;279(19):1542-1547 — the
+  // widely-cited origin of the free/total-PSA gray-zone literature. This value
+  // also already matches this engine's own psaTierIndex boundary (>=10.0 ng/mL
+  // = "High" tier, see psaTierIndex above), so no new inconsistent number is
+  // introduced.
+  //
+  // Borderline vs. clearly-elevated split within the gray zone reuses the AUA
+  // guideline's OWN stated action for exceeding threshold at each age band
+  // (AUA_PSA_THRESHOLDS[band].action_above, already defined/cited above):
+  // ages 45-49 exceeding 2.5 ng/mL maps to 'biannual' (repeat later) per
+  // AUA/SUO 2026 Statement 4, which is exactly the spec's "repeat to confirm
+  // before escalation" framing for the borderline tier. Ages 50+ exceeding
+  // their threshold map to 'urology_referral' per Statement 6/7 — i.e.
+  // guideline already treats that as clearly elevated, matching the spec's
+  // "no confounder -> imaging advised" tier rather than "just repeat."
+  //
+  // Confounders (new optional boolean fields, below). The product spec's
+  // Step 2 "Gray zone with confounder" tier names four factors: urinary
+  // symptoms/infection, recent cycling, DRE before the draw, and recent
+  // ejaculation. AUDIT CORRECTION (medical-grounding review): the individual
+  // primary-literature citations originally attached to each of these were
+  // checked against the CURRENT AUA/SUO 2026 guideline itself (the same
+  // guideline every other threshold in this file is anchored to) — and the
+  // guideline's own text contradicts two of the four:
+  //
+  //   "Neither DRE nor bicycle riding appreciably alters the PSA... and most
+  //   controlled studies evaluating ejaculation suggest it either does not
+  //   significantly impact or modestly increases (~10%) PSA. Clinicians
+  //   should also recognize that urinary tract infections and
+  //   instrumentation... cause transient increases in PSA."
+  //   — AUA/SUO 2026 EDPC, supporting text under Statement 3 (p.11)
+  //
+  // So per the guideline the app is otherwise built on: urinary/infective
+  // symptoms are a real, confirmed confounder; ejaculation has a real but
+  // modest (~10%) effect (consistent with the spec's ~3-day washout framing,
+  // kept as a secondary trigger); DRE and cycling do NOT appreciably move
+  // PSA and should not, by themselves, be sufficient to defer an imaging-
+  // track workup. (The DRE citation previously attached here — Yuan et al.,
+  // J Urol 1992 — actually reported "no clinically significant difference in
+  // PSA levels" from DRE; the cycling citation — Mejak et al., PLoS One
+  // 2013;8:e56030 — found a real effect in one cohort, but the field's
+  // evidence is mixed (a separate controlled study found no important
+  // impact, and a systematic review/meta-analysis exists on this exact
+  // question), and the current guideline's own synthesis lands on "no
+  // appreciable effect.") Both citations were themselves being misapplied,
+  // not just imprecisely formatted.
+  //
+  // Rather than silently dropping DRE/cycling (the product spec explicitly
+  // named all four, plausibly for a "when in doubt, recheck" patient-safety
+  // margin that intentionally goes beyond the guideline's own evidence bar —
+  // a legitimate product choice, not a medical error, IF it was made
+  // deliberately) they are downgraded to INFORMATIONAL-only here: still
+  // captured and surfaced to the clinician (part2Tier.confounders below
+  // includes all four), but no longer sufficient alone to select the
+  // gray-zone-confounder tier. Flagged for explicit product/clinical
+  // sign-off on whether this downgrade (or full removal) is correct.
+  const recentVigorousCycling = postData?.recentVigorousCycling === true;
+  const drePerformedBeforeDraw = postData?.drePerformedBeforeDraw === true;
+  // Tier-changing confounders: urinary/infective symptoms (confirmed),
+  // recent ejaculation (real but modest ~10% effect, per guideline text
+  // above), and recent instrumentation — see AUDIT CORRECTION comment.
+  // Ejaculation citation (Tchetgen et al., Urology 1996;47:511-516) checked
+  // and accurate as originally cited.
+  const recentEjaculation = postData?.recentEjaculation === true;
+  const urinarySymptomsInfection = postData?.urinarySymptomsInfection === true;
+  // Recent instrumentation (bladder catheterization, prostate biopsy, or
+  // cystoscopy) — the SAME AUA/SUO 2026 guideline text quoted above ("...
+  // urinary tract infections and instrumentation (e.g., recent bladder
+  // catheterization, prostate biopsy or cystoscopy, urinary retention)...
+  // cause transient increases in PSA") names this as a confirmed confounder
+  // in the same breath as UTI, but it was never wired as an input field —
+  // a PSA drawn shortly after a biopsy (a routine, expected scenario) fell
+  // through to elevated_imaging_advised with no way to flag the cause.
+  const recentInstrumentation = postData?.recentInstrumentation === true;
+  const hasConfounder = recentEjaculation || urinarySymptomsInfection || recentInstrumentation;
+  // Informational-only: shown to the clinician via part2Tier.confounders, but
+  // per the guideline text above, not treated as evidence that PSA elevation
+  // has a benign explanation.
+  const hasInformationalOnlyConfounder = recentVigorousCycling || drePerformedBeforeDraw;
+
+  const AUA_AGE_BAND_ORDER = ['age45_49', 'age50_59', 'age60_69', 'age70plus'];
+  const getAuaAgeBandKey = (a) => {
+    if (!Number.isFinite(a) || a < 45) return null;
+    if (a <= 49) return 'age45_49';
+    if (a <= 59) return 'age50_59';
+    if (a <= 69) return 'age60_69';
+    return 'age70plus';
+  };
+  const ageForPart2Tier = Number(preResult?.age);
+  const auaAgeBandKey = getAuaAgeBandKey(ageForPart2Tier);
+  const auaAgeBandInfo = auaAgeBandKey ? AUA_PSA_THRESHOLDS[auaAgeBandKey] : null;
+  const UNIVERSAL_PSA_FALLBACK_THRESHOLD = 4.0; // AUA 2026 EDPC p.11 "commonly cited" threshold — same value already used for mriRecommendReason='psa_elevated' above
+  const ageAdjustedThreshold = auaAgeBandInfo?.threshold ?? UNIVERSAL_PSA_FALLBACK_THRESHOLD;
+  const GRAY_ZONE_UPPER = 10.0; // Catalona et al. JAMA. 1998;279(19):1542-1547 — classic PSA gray-zone upper bound; matches existing psaTierIndex 'High' boundary
+
+  const stronglyDiscordantExtendedRisk =
+    !!(discordanceFlag && discordanceFlag.direction === 'epsa_higher' && discordanceFlag.severity === 'orange' && hasHighRiskFeature);
+
+  // Unified "strong risk factor (guideline or extended)" signal for the Borderline
+  // and Gray-zone-confounder tiers below. The product spec requires BOTH tiers to
+  // check "no strong risk factor (guideline or extended)" — but this function
+  // previously only read `hasHighRiskFeature` (Black ancestry / family history /
+  // confirmed BRCA / PI-RADS>=3 — a Part-2-local, guideline-oriented flag defined
+  // above) and never consulted Part 1's own extended-risk classification
+  // (`part1Tier.extendedRiskStrength`, computed in calculateDynamicEPsa from
+  // hereditary-cancer family history + Ashkenazi ancestry + expanded germline
+  // panel + prior biopsy history — see PART1_TIER_DEFS/EXTENDED_RISK_STRONG_THRESHOLD
+  // above). A patient who is "strong" by Part 1's extended-risk definition but not
+  // flagged by hasHighRiskFeature (e.g. hereditary-cancer FH + Ashkenazi ancestry,
+  // with no direct prostate family history or confirmed BRCA) was previously still
+  // eligible for Borderline/Gray-zone-confounder despite the spec's "or extended"
+  // clause. preResult is calculateDynamicEPsa's full return value, so part1Tier is
+  // always available here — no new parameter needed.
+  const part1ExtendedRiskStrong = preResult?.part1Tier?.extendedRiskStrength === 'strong';
+  const hasStrongRiskFactor = hasHighRiskFeature || part1ExtendedRiskStrong;
+
+  // ---------------------------------------------------------------------------
+  // Urology red flags — highest-priority override, checked ahead of every
+  // PSA-based tier. AUA/SUO 2026 EDPC and standard urology practice route
+  // gross hematuria, acute urinary retention, or a hard/irregular prostate on
+  // DRE straight to urology regardless of the PSA value or its tier — these
+  // are exam/symptom findings, not PSA-derived risk. Previously there was no
+  // input field for any of this, so a red-flag patient (e.g. a hard, irregular
+  // prostate reported by the referring physician) was scored purely on PSA
+  // and could land on a routine "Elevated — Imaging Advised" tier instead of
+  // urgent referral.
+  // ---------------------------------------------------------------------------
+  const urologyRedFlagHematuria = postData?.urologyRedFlagHematuria === true;
+  const urologyRedFlagRetention = postData?.urologyRedFlagRetention === true;
+  const urologyRedFlagAbnormalDre = postData?.urologyRedFlagAbnormalDre === true;
+  const hasUrologyRedFlag = urologyRedFlagHematuria || urologyRedFlagRetention || urologyRedFlagAbnormalDre;
+
+  // ---------------------------------------------------------------------------
+  // PSA confirmation — AUA/SUO 2026 EDPC, Expert Opinion under Statement 3:
+  // clinicians should repeat a newly elevated PSA before ordering a secondary
+  // biomarker, imaging, or biopsy, since PSA normalizes in many cases.
+  // Defaults to `true` (confirmed) so existing callers that don't pass this
+  // field see no behavior change — the recheck path only activates when a
+  // caller explicitly marks the PSA as `psaConfirmed: false`. Only applies to
+  // the borderline/gray-zone/elevated band; a markedly elevated or discordant
+  // PSA still routes straight to referral even if unconfirmed — the safety
+  // margin runs the other way at that level (see PSA_VERY_HIGH guardrail,
+  // which likewise does not wait on confirmation above 100 ng/mL).
+  // ---------------------------------------------------------------------------
+  const psaConfirmed = postData?.psaConfirmed !== false;
+
+  let part2TierKey = null;
+  if (hasUrologyRedFlag) {
+    part2TierKey = 'urology_red_flag_referral';
+  } else if (psaAdjusted != null && !Number.isNaN(psaAdjusted)) {
+    // Discordance/very-high-PSA override checked FIRST: per spec, "combined risk
+    // discordant with PSA alone due to extended risk factors" applies specifically
+    // to the case where PSA in isolation looks unremarkable but the combined
+    // profile is not — an unremarkable PSA must not be allowed to mask that.
+    if (psaAdjusted >= GRAY_ZONE_UPPER || stronglyDiscordantExtendedRisk) {
+      part2TierKey = 'markedly_elevated_prompt_referral';
+    } else if (psaAdjusted < ageAdjustedThreshold) {
+      part2TierKey = 'normal_routine_interval';
+    } else if (!psaConfirmed) {
+      part2TierKey = 'unconfirmed_repeat_advised';
+    } else if (hasConfounder && !hasStrongRiskFactor) {
+      part2TierKey = 'gray_zone_confounder_reassess';
+    } else if (!hasConfounder && !hasStrongRiskFactor && auaAgeBandInfo?.action_above === 'biannual') {
+      // Borderline requires ALL THREE per spec: no confounder, no strong risk
+      // factor (guideline or extended), and the AUA band's own action being
+      // "repeat later" rather than "refer." A strong-risk patient with no
+      // confounder falls through to Elevated below instead of Borderline —
+      // their risk profile means a marginal PSA still warrants imaging-track
+      // follow-up rather than a plain repeat-and-wait.
+      part2TierKey = 'borderline_repeat_advised';
+    } else {
+      part2TierKey = 'elevated_imaging_advised';
+    }
+  }
+
+  const PART2_TIER_DEFS = {
+    normal_routine_interval: {
+      label: 'Normal — Routine Interval',
+      description: 'PSA below the age-adjusted threshold. No action beyond routine surveillance; repeat per the age-based interval (e.g. every 2-4 years).',
+    },
+    unconfirmed_repeat_advised: {
+      label: 'Unconfirmed — Repeat PSA',
+      description: 'PSA at or above the age-adjusted threshold but not yet confirmed on a repeat test. Per AUA/SUO 2026 guidance, repeat the PSA before ordering imaging, a secondary biomarker, or biopsy — PSA normalizes in many cases.',
+    },
+    borderline_repeat_advised: {
+      label: 'Borderline — Repeat Advised',
+      description: 'PSA marginally above threshold; no confounder and no strong risk factor (guideline or extended). Repeat PSA to confirm before escalation.',
+    },
+    urology_red_flag_referral: {
+      label: 'Urology Red Flag — Refer Now',
+      description: 'Gross hematuria, acute urinary retention, or a hard/irregular prostate on DRE is present. Refer to urology now regardless of PSA value or tier — these are exam/symptom findings that warrant direct evaluation.',
+    },
+    gray_zone_confounder_reassess: {
+      // Description text intentionally unchanged from the product spec's exact
+      // four-factor wording pending clinical sign-off (see AUDIT CORRECTION
+      // comment above `hasConfounder`) — only the TRIGGER LOGIC was narrowed
+      // to urinary/infective symptoms and ejaculation. Recent cycling and DRE
+      // are still surfaced (part2Tier.confounders.recentVigorousCycling /
+      // .drePerformedBeforeDraw) but no longer alone sufficient to select
+      // this tier, per the current AUA/SUO 2026 guideline's own text.
+      label: 'Gray Zone With Confounder — Reassess',
+      description: 'PSA in the gray zone (~3-10) with a potential confounder: urinary/infective symptoms, recent instrumentation (catheterization, prostate biopsy, or cystoscopy), recent cycling, DRE before the draw, or ejaculation within ~3 days. Allow washout of the confounder and repeat; refer for urologist reassessment if it persists. Do not trigger imaging on this single value.',
+    },
+    elevated_imaging_advised: {
+      label: 'Elevated — Imaging Advised',
+      description: 'PSA clearly above threshold within the gray zone, no confounder. Recommend multiparametric prostate MRI (PI-RADS) to stratify risk before any biopsy decision.',
+    },
+    markedly_elevated_prompt_referral: {
+      label: 'Markedly Elevated — Prompt Referral',
+      description: 'PSA markedly elevated (above the gray-zone upper bound), or combined risk discordant with PSA alone owing to extended risk factors (ancestry, family history, germline status). Expedite urology referral and prostate MRI; examine and exclude urinary retention/infection.',
+    },
+  };
+  const part2Tier = part2TierKey
+    ? {
+        key: part2TierKey,
+        label: PART2_TIER_DEFS[part2TierKey].label,
+        description: PART2_TIER_DEFS[part2TierKey].description,
+        ageAdjustedThreshold,
+        grayZoneUpper: GRAY_ZONE_UPPER,
+        // recentVigorousCycling/drePerformedBeforeDraw are informational-only
+        // (see AUDIT CORRECTION comment above) — included here for clinician
+        // visibility but excluded from `any`/`hasConfounder`, which drives
+        // tier selection and only reflects urinarySymptomsInfection/
+        // recentEjaculation.
+        confounders: {
+          recentVigorousCycling, drePerformedBeforeDraw, recentEjaculation, urinarySymptomsInfection,
+          recentInstrumentation,
+          any: hasConfounder,
+          informationalOnly: hasInformationalOnlyConfounder,
+        },
+        // Unified guideline-or-extended "strong risk factor" signal used to gate
+        // Borderline/Gray-zone-confounder above — surfaced for callers/tests/UI
+        // that need to explain WHY a tier was (or wasn't) selected.
+        strongRiskFactor: { guideline: hasHighRiskFeature, extended: part1ExtendedRiskStrong, any: hasStrongRiskFactor },
+        psaConfirmed,
+        urologyRedFlag: {
+          hematuria: urologyRedFlagHematuria,
+          retention: urologyRedFlagRetention,
+          abnormalDre: urologyRedFlagAbnormalDre,
+          any: hasUrologyRedFlag,
+        },
+      }
+    : null;
+
   return {
     priorPsa: priorPsaNum,
     rescreeningIntervalYears,
@@ -1630,7 +2246,7 @@ export const calculateDynamicEPsaPost = (preResult, postData, customConfig = nul
     rescreeningIntervalMessage,
     // Provenance — used by the results meta-bar for audit/citation
     computedAt: new Date().toISOString(),
-    engineVersion: '1.0.0',
+    engineVersion: ENGINE_VERSION,
     // Core combined score
     riskPct: tierDef.psaEquivalent,
     riskPctRange: null,
@@ -1648,6 +2264,8 @@ export const calculateDynamicEPsaPost = (preResult, postData, customConfig = nul
     epsaTierKey: tierDef.key,
     guidelineText: tierDef.guideline,
     nextSteps: [tierDef.guideline],
+    // Part 2 output-statement tier (product spec, 5 tiers) — see PART2_TIER_DEFS above
+    part2Tier,
 
     // Flags
     piradsOverridden,
@@ -1680,6 +2298,7 @@ export const calculateDynamicEPsaPost = (preResult, postData, customConfig = nul
     biopsyGuidelineSupportCount,
     tierGuidelineSupport,
     tierGuidelineSupportCount,
+    sdmGuide: buildShareModelGuide({ psaRecommendReason: null, recommendPSA: null, mriRecommendReason, biopsyReason }),
 
     // Confidence
     piradsConfidenceText,
