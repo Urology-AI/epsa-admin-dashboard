@@ -5,7 +5,12 @@
  */
 
 export const DEFAULT_CALCULATOR_CONFIG = {
-  version: '1.0.1',
+  // Bumped 1.0.1 -> 1.0.2 for the additive sdmGuide field (SHARE-approach SDM
+  // conversation guide) — schema-additive change, not a weight/coefficient change.
+  // Bumped 1.0.2 -> 1.0.3 for the additive part1Tier/part2Tier output-statement
+  // tiers and new Part 1 (priorBiopsyHistory) / Part 2 (confounder) optional
+  // input fields — schema-additive, no weight/coefficient change.
+  version: '1.0.3',
   part1: {
     modelType: 'binned_v1',
     // Part 1 now uses a point-based score (no logistic weights); intercept/calibration are unused.

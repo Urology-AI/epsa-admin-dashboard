@@ -1,16 +1,40 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { RefreshCw, ChevronLeft, ChevronRight, CheckCircle2, ClipboardList, ListChecks, Lock, Sparkles, Download } from 'lucide-react';
-import { calculateDynamicEPsa } from '@epsa/engine';
+import { calculateDynamicEPsa, calculateDynamicEPsaPost } from '@epsa/engine';
 import { TEST_CASES, DECISION_OPTIONS } from '../../data/testCases.js';
+import { TEST_CASES_MODEL2, DECISION_OPTIONS_MODEL2 } from '../../data/testCasesModel2.js';
 import { fetchTestResponses, submitTestResponse } from '../../services/testingService.js';
 import { msalInstance } from '../../config/msal.js';
 import './TestingTab.css';
 
+// Model registry — everything that differs between the pre-PSA (Model 1) and
+// post-PSA/imaging (Model 2) test sequences lives here, keyed by model id, so
+// the rest of the component doesn't need to branch on which model is active.
+const MODELS = {
+  model1: {
+    label: 'Model 1 — Pre-PSA',
+    cases: TEST_CASES,
+    decisionOptions: DECISION_OPTIONS,
+  },
+  model2: {
+    label: 'Model 2 — Post-PSA',
+    cases: TEST_CASES_MODEL2,
+    decisionOptions: DECISION_OPTIONS_MODEL2,
+  },
+};
+
 // Live engine result per case — computed once, not stored as a static snapshot,
 // so the wizard always reflects the current @epsa/engine logic.
-const ENGINE_RESULTS = Object.fromEntries(
+const ENGINE_RESULTS_MODEL1 = Object.fromEntries(
   TEST_CASES.map((c) => [c.id, calculateDynamicEPsa(c.formData)])
 );
+const ENGINE_RESULTS_MODEL2 = Object.fromEntries(
+  TEST_CASES_MODEL2.map((c) => {
+    const preResult = calculateDynamicEPsa(c.preFormData);
+    return [c.id, calculateDynamicEPsaPost(preResult, c.postData)];
+  })
+);
+const ENGINE_RESULTS = { model1: ENGINE_RESULTS_MODEL1, model2: ENGINE_RESULTS_MODEL2 };
 
 // The engine has no standalone "recommend genetic counseling" flag — this reads the same
 // hereditary-risk item impacts (BRCA/germline panel, hereditary-cancer family history,
@@ -25,7 +49,7 @@ function hasHereditaryRiskFlag(result) {
   return (result?.itemImpacts || []).some((i) => HEREDITARY_RISK_ITEMS.has(i.item) && i.points > 0);
 }
 
-function engineSummary(result) {
+function engineSummaryModel1(result) {
   if (!result) return { label: 'Engine error', tier: null, tone: 'error', recommendation: 'Could not compute — check formData', hereditaryRisk: false };
   const hereditaryRisk = hasHereditaryRiskFlag(result);
   if (result.belowMinAge) return { label: 'Below model age range (<40)', tier: null, tone: 'neutral', recommendation: 'No score — model not validated under age 40', hereditaryRisk };
@@ -39,11 +63,42 @@ function engineSummary(result) {
   };
 }
 
+// part2Tier.key values map onto the same tone classes calculateDynamicEPsa's
+// epsaTierKey already uses in TestingTab.css (testing-engine-box--low/
+// --intermediate/--elevated/--neutral/--error) — reused for consistent
+// styling, not a 1:1 semantic match to Model 1's risk tiers.
+const MODEL2_TIER_TONE = {
+  normal_routine_interval: 'low',
+  unconfirmed_repeat_advised: 'neutral',
+  borderline_repeat_advised: 'intermediate',
+  gray_zone_confounder_reassess: 'intermediate',
+  elevated_imaging_advised: 'elevated',
+  urology_red_flag_referral: 'error',
+  markedly_elevated_prompt_referral: 'error',
+};
+
+function engineSummaryModel2(result) {
+  if (!result?.part2Tier) return { label: 'Engine error', tier: null, tone: 'error', recommendation: 'Could not compute — check preFormData/postData', hereditaryRisk: false };
+  const tier = result.part2Tier;
+  return {
+    label: `${tier.label} (${result.totalPoints ?? '?'} pts)`,
+    tier: tier.label,
+    tone: MODEL2_TIER_TONE[tier.key] || 'neutral',
+    recommendation: tier.description,
+    hereditaryRisk: false,
+  };
+}
+
+function engineSummary(model, result) {
+  return model === 'model2' ? engineSummaryModel2(result) : engineSummaryModel1(result);
+}
+
 export default function TestingTab() {
   const myEmail = (
     msalInstance.getActiveAccount() ?? msalInstance.getAllAccounts()[0]
   )?.username || '';
 
+  const [model, setModel] = useState('model1'); // 'model1' | 'model2'
   const [view, setView] = useState('test'); // 'test' | 'results'
   const [index, setIndex] = useState(0);
   const [decision, setDecision] = useState('');
@@ -55,9 +110,11 @@ export default function TestingTab() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
 
-  const currentCase = TEST_CASES[index];
-  const engineResult = ENGINE_RESULTS[currentCase.id];
-  const engine = engineSummary(engineResult);
+  const activeModel = MODELS[model];
+  const cases = activeModel.cases;
+  const currentCase = cases[index];
+  const engineResult = ENGINE_RESULTS[model][currentCase.id];
+  const engine = engineSummary(model, engineResult);
   const [revealed, setRevealed] = useState(false);
 
   const load = useCallback(async () => {
@@ -73,6 +130,15 @@ export default function TestingTab() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Switching models resets to the first case of that sequence — the two
+  // sets use disjoint id prefixes (C0x / P0x) so `index` alone can't carry
+  // over meaningfully between them.
+  function switchModel(next) {
+    if (next === model) return;
+    setModel(next);
+    setIndex(0);
+  }
 
   // Restore this case's own prior answer (if the signed-in physician already submitted one)
   useEffect(() => {
@@ -95,15 +161,17 @@ export default function TestingTab() {
     try {
       await submitTestResponse({
         caseId: currentCase.id,
+        model,
         decision,
         notes,
-        engineScore: engineResult?.calculationDetails?.rawScore ?? null,
-        engineTier: engineResult?.epsaTierKey ?? null,
-        engineRecommendPSA: engineResult?.recommendPSA ?? null,
+        engineScore: model === 'model2' ? (engineResult?.totalPoints ?? null) : (engineResult?.calculationDetails?.rawScore ?? null),
+        engineTier: model === 'model2' ? (engineResult?.part2Tier?.key ?? null) : (engineResult?.epsaTierKey ?? null),
+        engineTierLabel: model === 'model2' ? (engineResult?.part2Tier?.label ?? null) : (engineResult?.epsaTierLabel ?? null),
+        engineRecommendPSA: model === 'model2' ? null : (engineResult?.recommendPSA ?? null),
       });
       setRevealed(true);
       await load();
-      if (index < TEST_CASES.length - 1) setIndex((i) => i + 1);
+      if (index < cases.length - 1) setIndex((i) => i + 1);
     } catch (e) {
       setSubmitError(e.message);
     } finally {
@@ -111,7 +179,7 @@ export default function TestingTab() {
     }
   }
 
-  const progress = Math.round((answeredCaseIds.size / TEST_CASES.length) * 100);
+  const progress = Math.round((answeredCaseIds.size / cases.length) * 100);
 
   return (
     <div className="tab-content">
@@ -138,6 +206,21 @@ export default function TestingTab() {
         </div>
       </div>
 
+      {view === 'test' && (
+        <div className="testing-model-toggle">
+          {Object.entries(MODELS).map(([key, m]) => (
+            <button
+              key={key}
+              type="button"
+              className={`testing-view-btn${model === key ? ' testing-view-btn--active' : ''}`}
+              onClick={() => switchModel(key)}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {loading ? (
         <div className="loading">Loading test sequence…</div>
       ) : loadError ? (
@@ -154,7 +237,7 @@ export default function TestingTab() {
               <div className="testing-progress-fill" style={{ width: `${progress}%` }} />
             </div>
             <span className="testing-progress-label">
-              {answeredCaseIds.size} / {TEST_CASES.length} cases answered
+              {answeredCaseIds.size} / {cases.length} cases answered
             </span>
           </div>
 
@@ -193,7 +276,7 @@ export default function TestingTab() {
             )}
 
             <div className="testing-decision-group">
-              {DECISION_OPTIONS.map((opt) => (
+              {activeModel.decisionOptions.map((opt) => (
                 <button
                   key={opt}
                   type="button"
@@ -241,8 +324,8 @@ export default function TestingTab() {
               <button
                 type="button"
                 className="testing-nav-btn"
-                disabled={index === TEST_CASES.length - 1}
-                onClick={() => setIndex((i) => Math.min(TEST_CASES.length - 1, i + 1))}
+                disabled={index === cases.length - 1}
+                onClick={() => setIndex((i) => Math.min(cases.length - 1, i + 1))}
               >
                 Next <ChevronRight size={15} />
               </button>
@@ -254,7 +337,17 @@ export default function TestingTab() {
   );
 }
 
-const CASE_BY_ID = Object.fromEntries(TEST_CASES.map((c) => [c.id, c]));
+// Merged lookup across both models — case ids are disjoint (C0x / P0x), so a
+// single map is safe and lets the results view work across both without
+// needing every response row to already carry a reliable `model` field.
+const CASE_BY_ID = Object.fromEntries([...TEST_CASES, ...TEST_CASES_MODEL2].map((c) => [c.id, c]));
+
+// Responses submitted before the `model` field existed have no way to say
+// which sequence they belong to — fall back to the id prefix, which has
+// been the one reliable distinguisher between the two sets from the start.
+function responseModel(r) {
+  return r.model || (r.caseId?.startsWith('P') ? 'model2' : 'model1');
+}
 
 function ResultsView({ responses }) {
   if (responses.length === 0) {
@@ -262,12 +355,15 @@ function ResultsView({ responses }) {
   }
 
   const sorted = [...responses].sort((a, b) => {
+    const modelCmp = responseModel(a).localeCompare(responseModel(b));
+    if (modelCmp !== 0) return modelCmp;
     if (a.caseId !== b.caseId) return a.caseId.localeCompare(b.caseId);
     return (a.physicianName || '').localeCompare(b.physicianName || '');
   });
 
   const downloadCsv = () => {
     const headers = [
+      'Model',
       'Case',
       'Physician',
       'Physician decision',
@@ -277,10 +373,11 @@ function ResultsView({ responses }) {
     ];
     const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
     const rows = sorted.map((r) => [
+      MODELS[responseModel(r)]?.label || responseModel(r),
       r.caseId,
       r.physicianName || r.physicianEmail,
       r.decision,
-      r.engineTier || '',
+      r.engineTierLabel || r.engineTier || '',
       CASE_BY_ID[r.caseId]?.groundTruth || '',
       r.submittedAt ? new Date(r.submittedAt).toLocaleString() : '',
     ]);
@@ -304,6 +401,7 @@ function ResultsView({ responses }) {
       <table className="testing-results-table">
         <thead>
           <tr>
+            <th>Model</th>
             <th>Case</th>
             <th>Physician</th>
             <th>Physician decision</th>
@@ -315,10 +413,11 @@ function ResultsView({ responses }) {
         <tbody>
           {sorted.map((r) => (
             <tr key={r.id}>
+              <td>{MODELS[responseModel(r)]?.label || responseModel(r)}</td>
               <td>{r.caseId}</td>
               <td>{r.physicianName || r.physicianEmail}</td>
               <td>{r.decision}</td>
-              <td>{r.engineTier || '—'}</td>
+              <td>{r.engineTierLabel || r.engineTier || '—'}</td>
               <td className="testing-results-truth">{CASE_BY_ID[r.caseId]?.groundTruth || '—'}</td>
               <td>{r.submittedAt ? new Date(r.submittedAt).toLocaleString() : '—'}</td>
             </tr>

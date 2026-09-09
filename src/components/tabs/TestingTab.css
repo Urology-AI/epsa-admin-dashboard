@@ -21,6 +21,13 @@
   color: #fff;
 }
 
+.testing-model-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
 .testing-engine-box {
   background: var(--surface2);
   border: 1px solid var(--border);

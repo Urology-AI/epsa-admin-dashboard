@@ -1,0 +1,11 @@
+{
+  "syncedAt": "2026-09-09T19:21:43.097Z",
+  "sourcePath": "/tmp/epsa-engine-origin-master",
+  "sourceGit": {
+    "sha": "0d8707953df09619024803a0ae43518f0bcde794",
+    "branch": "HEAD",
+    "dirty": false
+  },
+  "packageVersion": "0.2.5",
+  "engineVersion": "0.2.5"
+}

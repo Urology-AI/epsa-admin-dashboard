@@ -3,7 +3,9 @@
  *
  * GET  — list all physician responses to the ePSA test-case sequence.
  * POST — submit/update one physician's decision for one test case.
- *        Body: { caseId, decision, notes? }
+ *        Body: { caseId, model?, decision, notes?, engineScore?, engineTier?, engineTierLabel?, engineRecommendPSA? }
+ *        `model` is 'model1' (pre-PSA) or 'model2' (post-PSA); defaults to
+ *        'model1' when omitted.
  *        Document ID is `${caseId}_${physicianEmail}` so a resubmission overwrites.
  *
  * Requires a valid Microsoft MSAL ID token — only authenticated Mount Sinai users.
@@ -59,7 +61,7 @@ export async function onRequestPost({ env, request }) {
     return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400, headers: JSON_CT });
   }
 
-  const { caseId, decision, notes, engineScore, engineTier, engineRecommendPSA } = body || {};
+  const { caseId, model, decision, notes, engineScore, engineTier, engineTierLabel, engineRecommendPSA } = body || {};
   if (!caseId || !decision) {
     return new Response(JSON.stringify({ error: 'caseId and decision are required' }), { status: 400, headers: JSON_CT });
   }
@@ -85,6 +87,11 @@ export async function onRequestPost({ env, request }) {
     body: JSON.stringify({
       fields: {
         caseId:             { stringValue: caseId },
+        // Which test sequence this case belongs to ('model1' pre-PSA /
+        // 'model2' post-PSA). Falls back to 'model1' for callers that
+        // predate this field — every case id before Model 2 shipped came
+        // from the model1 sequence.
+        model:              { stringValue: model || 'model1' },
         decision:           { stringValue: decision },
         notes:              { stringValue: notes || '' },
         physicianEmail:     { stringValue: physicianEmail },
@@ -92,6 +99,10 @@ export async function onRequestPost({ env, request }) {
         submittedAt:        { timestampValue: new Date().toISOString() },
         engineScore:        Number.isFinite(engineScore) ? { integerValue: String(Math.trunc(engineScore)) } : { nullValue: null },
         engineTier:         engineTier ? { stringValue: engineTier } : { nullValue: null },
+        // Human-readable tier label at submission time (Model 2's part2Tier
+        // keys, e.g. 'urology_red_flag_referral', aren't self-explanatory
+        // the way Model 1's epsaTierKey values are — keep both).
+        engineTierLabel:    engineTierLabel ? { stringValue: engineTierLabel } : { nullValue: null },
         engineRecommendPSA: typeof engineRecommendPSA === 'boolean' ? { booleanValue: engineRecommendPSA } : { nullValue: null },
       },
     }),

@@ -1,6 +1,10 @@
-// ePSA Model 1 test sequence — physician ground-truth validation set.
+// ePSA MODEL 1 test sequence — physician ground-truth validation set.
+// Pathway: pre_psa — "Should I get a PSA test?" (calculateDynamicEPsa()).
 // Source: "ePSA test sequence.xlsx" (Test Cases sheet) + "ePSA_Scoring_Tool.xlsx"
 // (confirms the point weights below match the manual scoring tool 1:1).
+//
+// For the post-PSA/imaging follow-up model, see testCasesModel2.js
+// (Model 2 — calculateDynamicEPsaPost() with pathwayMode='post_psa').
 //
 // `formData` is the exact shape @epsa/engine's calculateDynamicEPsa() expects —
 // used to call the live engine instead of trusting a spreadsheet snapshot.
