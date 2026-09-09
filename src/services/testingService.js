@@ -13,12 +13,12 @@ export async function fetchTestResponses() {
   return res.json();
 }
 
-export async function submitTestResponse({ caseId, decision, notes, engineScore, engineTier, engineRecommendPSA }) {
+export async function submitTestResponse({ caseId, model, decision, notes, engineScore, engineTier, engineTierLabel, engineRecommendPSA }) {
   const authHeaders = await getAuthHeader();
   const res = await fetch('/testing-responses', {
     method: 'POST',
     headers: { ...authHeaders, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ caseId, decision, notes, engineScore, engineTier, engineRecommendPSA }),
+    body: JSON.stringify({ caseId, model, decision, notes, engineScore, engineTier, engineTierLabel, engineRecommendPSA }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
