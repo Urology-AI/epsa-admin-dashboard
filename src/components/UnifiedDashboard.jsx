@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { LogOut, LayoutDashboard, MonitorSmartphone, Calculator, Database, ShieldCheck, FlaskConical, Settings, ClipboardCheck, Boxes } from 'lucide-react';
+import { LogOut, LayoutDashboard, MonitorSmartphone, Calculator, Database, ShieldCheck, FlaskConical, Settings, ClipboardCheck, Boxes, ShieldAlert } from 'lucide-react';
 import { isTursoConfigured, fetchScreeningSessions, fetchScreeningStats } from '../services/tursoService.js';
 import { fetchCalculatorSessions } from '../services/firebaseService.js';
 import { isRedcapConfigured, fetchRedcapRecords } from '../services/redcapService.js';
@@ -13,6 +13,7 @@ import VVPanel        from './tabs/VVPanel.jsx';
 import ResearchTab    from './tabs/ResearchTab.jsx';
 import SettingsTab    from './tabs/SettingsTab.jsx';
 import TestingTab     from './tabs/TestingTab.jsx';
+import SecurityTab    from './tabs/SecurityTab.jsx';
 import './UnifiedDashboard.css';
 
 const TABS = [
@@ -24,6 +25,7 @@ const TABS = [
   { id: 'vv',         label: 'Verification & Validation',  Icon: ShieldCheck },
   { id: 'testing',    label: 'Physician Testing',          Icon: ClipboardCheck },
   { id: 'research',   label: 'Research',                   Icon: FlaskConical },
+  { id: 'security',   label: 'Security',                   Icon: ShieldAlert },
   { id: 'settings',   label: 'Settings',                   Icon: Settings },
 ];
 
@@ -223,6 +225,7 @@ export default function UnifiedDashboard({ onLogout }) {
         {tab === 'vv' && <VVPanel />}
         {tab === 'testing' && <TestingTab />}
         {tab === 'research' && <ResearchTab />}
+        {tab === 'security' && <SecurityTab />}
         {tab === 'settings' && <SettingsTab />}
       </main>
     </div>

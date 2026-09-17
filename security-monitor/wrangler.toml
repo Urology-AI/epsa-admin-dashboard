@@ -1,0 +1,38 @@
+name = "epsa-security-monitor"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+# Every 15 min: probe every public API unauthenticated.
+# Hourly (minute 5): audit Cloudflare traffic logs, Worker inventory and Firebase config.
+[triggers]
+crons = ["*/15 * * * *", "5 * * * *"]
+
+# Findings store, also bound (read-only use) to the admin dashboard's
+# /security-findings Pages Function.
+[[kv_namespaces]]
+binding = "SECURITY_KV"
+id = "89e8d49e42064986b734e203779c7866"
+
+[[services]]
+binding = "REDCAP_PROXY"
+service = "epsa-redcap-proxy"
+
+[[services]]
+binding = "TURSO_PROXY"
+service = "epsa-turso-proxy"
+
+[[services]]
+binding = "SMTP_RELAY"
+service = "symposium-smtp-relay"
+
+[vars]
+CF_ACCOUNT_ID = "b92cfc731e00808df3e13322ff369530"
+CF_ZONE_ID    = "349ca2a981653741f222bdf3c8736c35"
+
+# Secrets:
+#   npx wrangler secret put CF_API_TOKEN --config security-monitor/wrangler.toml
+#     Custom token: Account > Account Analytics: Read, Account > Workers Scripts: Read,
+#                   Zone (urology.edu.eu.org) > Analytics: Read
+#   npx wrangler secret put FIREBASE_SERVICE_ACCOUNT --config security-monitor/wrangler.toml
+#     Same one-line JSON the dashboard uses (firebase-adminsdk-fbsvc@epsa-30d0b)
