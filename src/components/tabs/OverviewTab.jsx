@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, Database, FileCheck, AlertCircle, CheckCircle, Clock, Loader2, WifiOff } from 'lucide-react';
+import { Activity, Database, FileCheck, AlertCircle, CheckCircle, Clock, Loader2, WifiOff, Boxes } from 'lucide-react';
 
 // status: 'loading' | 'ok' | 'error' | 'off'
 function SourceBadge({ status, label }) {
@@ -44,9 +44,10 @@ function StatCard({ icon: Icon, label, value, sub, color = 'var(--accent)' }) {
   );
 }
 
-export default function OverviewTab({ screeningStats, calcSessions, sourceStatus = {} }) {
+export default function OverviewTab({ screeningStats, calcSessions, twinStats, sourceStatus = {} }) {
   const { total = 0, redcapPushed = 0, thisWeek = 0 } = screeningStats ?? {};
   const pct = total > 0 ? Math.round((redcapPushed / total) * 100) : 0;
+  const twin = twinStats && twinStats.configured !== false ? twinStats : null;
 
   const hasErrors = Object.values(sourceStatus).some((s) => s === 'error');
 
@@ -57,6 +58,7 @@ export default function OverviewTab({ screeningStats, calcSessions, sourceStatus
       {/* Source health row */}
       <div className="source-row">
         <SourceBadge status={sourceStatus.turso}    label="Turso (Screening DB)" />
+        <SourceBadge status={sourceStatus.twin}     label="Digital Twin (Turso)" />
         <SourceBadge status={sourceStatus.firebase}  label="Firebase (Calculator)" />
         <SourceBadge status={sourceStatus.redcap}    label="REDCap Sinai" />
       </div>
@@ -82,6 +84,11 @@ export default function OverviewTab({ screeningStats, calcSessions, sourceStatus
               REDCap: set <code>REDCAP_TOKEN</code> and <code>REDCAP_API_URL</code> as Cloudflare Pages env vars.
             </p>
           )}
+          {sourceStatus.twin === 'error' && (
+            <p className="error-hint">
+              Digital Twin: set <code>TWIN_TURSO_URL</code> and <code>TWIN_TURSO_AUTH_TOKEN</code> as Cloudflare Pages env vars.
+            </p>
+          )}
         </div>
       )}
 
@@ -91,6 +98,13 @@ export default function OverviewTab({ screeningStats, calcSessions, sourceStatus
         <StatCard icon={FileCheck}  label="Pushed to REDCap"               value={redcapPushed}        color="var(--green)"
           sub={total > 0 ? `${pct}% of all sessions` : undefined} />
         <StatCard icon={Database}   label="Not yet in REDCap"              value={total - redcapPushed} color="var(--amber)" />
+        {twin && (
+          <>
+            <StatCard icon={Boxes} label="Digital Twin cases (all time)" value={twin.total}          color="var(--blue)" />
+            <StatCard icon={FileCheck} label="Twin cases with pathology"  value={twin.withPathology}  color="var(--green)"
+              sub={twin.total > 0 ? `${Math.round((twin.withPathology / twin.total) * 100)}% of cases` : undefined} />
+          </>
+        )}
       </div>
 
       {total > 0 && (

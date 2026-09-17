@@ -4,7 +4,8 @@ Unified research dashboard for the ePSA prostate cancer screening platform. Aggr
 
 | Source | What it shows |
 |--------|--------------|
-| **Turso** | Community screening sessions from the mobile bus tool |
+| **Turso (screening)** | Community screening sessions from the mobile bus tool |
+| **Turso (digital twin)** | De-identified pre-operative surgical-planning cases with model predictions and pathology outcomes (separate DB) |
 | **Firebase** | Full calculator sessions from the ePSA web app |
 | **REDCap (Mount Sinai)** | Consented records pushed to the IRB study database |
 
@@ -44,6 +45,7 @@ Copy `.env.example` → `.env.local` and fill in:
 | `VITE_AZURE_TENANT_ID` | Azure → App registrations → your app → Directory (tenant) ID |
 | `VITE_TURSO_URL` | Turso dashboard or screening-tool `.env` |
 | `VITE_TURSO_AUTH_TOKEN` | Turso dashboard or screening-tool `.env` |
+| `TWIN_TURSO_URL` / `TWIN_TURSO_AUTH_TOKEN` | The digital twin's own Turso DB (separate from screening). Optional — omit to hide the Digital Twin source. Runtime-only, not a `VITE_` var. |
 | `VITE_REDCAP_PROXY_URL` | Deployed Cloudflare Worker URL |
 | `VITE_DASHBOARD_SECRET` | Must match `wrangler secret put DASHBOARD_SECRET` on the worker |
 | `VITE_FIREBASE_*` | Copy from e-psa-calculator frontend `.env` |
