@@ -22,16 +22,9 @@ const KNOWN_WORKERS = new Set([
   'shim-copilot', 'symposium-smtp-relay', 'epsa-security-monitor',
 ]);
 
-const KNOWN_FUNCTIONS = new Set(('adminDeleteSinaiSession,adminGenerateClinicCodes,adminGetPublicSession,adminGetSinaiSession,' +
-  'adminLinkPublicSessionToSinai,adminListClinicCodeAuditLog,adminListPublicConsentedSessions,adminListSinaiSessions,' +
-  'adminLogin,adminResyncPublicSession,adminRevokeClinicCode,adminSubmitSinaiSession,adminToggleSinaiRedcapEnabled,' +
-  'calculatePsaRecommendation,checkCollections,cleanupAbandonedSessions,cleanupInactiveAdmins,cleanupOldAuditLogs,' +
-  'cleanupOldSessions,createSession,deleteSession,deleteUserData,exportSessionsCSV,exportUserData,exportUsersCSV,' +
-  'getDecryptedPhone,getSectionLocks,getSession,getSessionStatsForAdmin,getUser,getUserPhone,getUserSessions,' +
-  'getUsersWithConsent,listSessionsForAdmin,lockSection,loginAnonymousBySessionId,markCodeImported,npiProxy,' +
-  'optimizeDatabase,predictBiopsyRisk,sendAdminOTP,storeEncryptedPhone,submitRedcap,submitSinaiSession,submitToRedcap,' +
-  'syncSinaiSessionStatusToPatient,syncToRedcap,unlockSection,updateAdminLastLogin,updateSession,upsertConsent,' +
-  'validateClinicCode,verifyAdminOTP').split(','));
+// Client admin callables were removed (e-psa-calculator#233); any admin-named
+// function reappearing is flagged as unreviewed.
+const KNOWN_FUNCTIONS = new Set(('calculatePsaRecommendation,cleanupAbandonedSessions,cleanupOldAuditLogs,cleanupOldSessions,createSession,deleteSession,deleteUserData,exportUserData,getSectionLocks,getSession,getUser,getUserSessions,lockSection,loginAnonymousBySessionId,npiProxy,optimizeDatabase,predictBiopsyRisk,submitRedcap,submitSinaiSession,submitToRedcap,syncToRedcap,updateSession,upsertConsent,validateClinicCode').split(','));
 
 const TWIN = 'https://digital-twin.urology.edu.eu.org';
 const DASH = 'https://epsa-admin.urology.edu.eu.org';
@@ -59,9 +52,9 @@ const PROBES = [
   { name: 'Firestore: anonymous list sessions', url: 'https://firestore.googleapis.com/v1/projects/epsa-30d0b/databases/(default)/documents/sessions?pageSize=1', ok: (s) => s === 403 || s === 401 },
   { name: 'Firestore: anonymous list users', url: 'https://firestore.googleapis.com/v1/projects/epsa-30d0b/databases/(default)/documents/users?pageSize=1', ok: (s) => s === 403 || s === 401 },
   { name: 'Functions: submitToRedcap unauthenticated', url: `${FN}/submitToRedcap`, init: JSON_POST({ data: {} }), ok: (s) => s === 401 },
-  { name: 'Functions: adminListSinaiSessions unauthenticated', url: `${FN}/adminListSinaiSessions`, init: JSON_POST({ data: {} }), ok: (s) => s === 403 || s === 401 },
+  ...['adminListSinaiSessions', 'adminLogin', 'sendAdminOTP', 'getDecryptedPhone', 'exportSessionsCSV']
+    .map((f) => ({ name: `Deleted function stays gone: ${f}`, url: `${FN}/${f}`, init: JSON_POST({ data: {} }), ok: (s) => s === 404 })),
   { name: 'Voice server: synthesis without sign-in', url: 'https://adityakiwi--kokoro-tts-kokoroserver-web.modal.run/voice/audio', init: JSON_POST({ text: '.' }), timeoutMs: 60000, ok: (s) => s === 401 },
-  { name: 'Functions: listSessionsForAdmin unauthenticated', url: `${FN}/listSessionsForAdmin`, init: JSON_POST({ data: {} }), ok: (s) => s === 401 || s === 403 },
 ];
 
 export default {
