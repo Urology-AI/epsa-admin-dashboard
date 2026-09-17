@@ -8,6 +8,8 @@
  *
  * Server-side env vars:
  *   TWIN_API_URL — optional; defaults to the production twin origin
+ *   TWIN_ACCESS_CLIENT_ID / TWIN_ACCESS_CLIENT_SECRET — Cloudflare Access
+ *     service token, sent once the twin gates /api/turso/* behind Access
  */
 
 const DEFAULT_TWIN_API_URL = 'https://digital-twin.urology.edu.eu.org';
@@ -18,7 +20,13 @@ export async function fetchTwinCaseLog(env) {
   const base = (env.TWIN_API_URL || DEFAULT_TWIN_API_URL).replace(/\/+$/, '');
   const res = await fetch(`${base}/api/turso/execute`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(env.TWIN_ACCESS_CLIENT_ID && {
+        'CF-Access-Client-Id':     env.TWIN_ACCESS_CLIENT_ID,
+        'CF-Access-Client-Secret': env.TWIN_ACCESS_CLIENT_SECRET,
+      }),
+    },
     body: JSON.stringify({ sql: CASE_LOG_SELECT, args: [] }),
   });
   const data = await res.json().catch(() => ({}));
