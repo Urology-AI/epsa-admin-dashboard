@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { RefreshCw, ChevronDown, ChevronRight, DatabaseZap, Trash2 } from 'lucide-react';
 import { getAuthHeader } from '../../services/auth.js';
 import { deleteCalculatorSession } from '../../services/firebaseService.js';
+import ActivityPanel from './ActivityPanel.jsx';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -207,7 +208,25 @@ export default function CalculatorTab({ sessions, loading, error, onRefresh }) {
   const [backfillState, setBackfillState] = useState('idle'); // idle | running | done | error
   const [backfillMsg,   setBackfillMsg]   = useState('');
   const [deletingId,    setDeletingId]    = useState(null);
+  const [collapsedDays, setCollapsedDays] = useState(new Set());
   const list = sessions ?? [];
+
+  // Newest first, grouped by local calendar day of createdAt.
+  const groups = [];
+  for (const s of [...list].sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))) {
+    const d = s.createdAt ? new Date(s.createdAt) : null;
+    const key = d && !isNaN(d) ? d.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }) : 'No date';
+    if (groups.at(-1)?.key !== key) groups.push({ key, items: [] });
+    groups.at(-1).items.push(s);
+  }
+
+  function toggleDay(key) {
+    setCollapsedDays(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
 
   async function handleDelete(id) {
     if (!window.confirm(`Permanently delete session ${id}? This cannot be undone.`)) return;
@@ -245,6 +264,8 @@ export default function CalculatorTab({ sessions, loading, error, onRefresh }) {
 
   return (
     <div className="tab-content">
+      <ActivityPanel />
+
       <div className="tab-header-row">
         <h2 className="tab-heading">Calculator Sessions (ePSA Full Tool)</h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -292,7 +313,18 @@ export default function CalculatorTab({ sessions, loading, error, onRefresh }) {
               </tr>
             </thead>
             <tbody>
-              {list.map((s) => {
+              {groups.map(({ key, items }) => (
+                <React.Fragment key={key}>
+                  <tr className="session-row date-group-row" onClick={() => toggleDay(key)}>
+                    <td className="td-expand">
+                      {collapsedDays.has(key) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                    </td>
+                    <td colSpan={7}>
+                      <strong>{key}</strong>
+                      <span className="date-group-meta">{items.length} session{items.length === 1 ? '' : 's'}</span>
+                    </td>
+                  </tr>
+              {!collapsedDays.has(key) && items.map((s) => {
                 const open = expanded.has(s.id);
                 const preRes = s.step1?.preResult ?? s.preResult;
                 const tierKey = preRes?.tierKey ?? s.step2?.postResult?.tierKey ?? s.finalCategory;
@@ -333,6 +365,8 @@ export default function CalculatorTab({ sessions, loading, error, onRefresh }) {
                   </React.Fragment>
                 );
               })}
+                </React.Fragment>
+              ))}
             </tbody>
           </table>
         </div>

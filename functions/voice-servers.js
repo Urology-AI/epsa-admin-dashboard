@@ -22,7 +22,7 @@ const VOICE_SERVERS_DOC = 'appConfig/voiceServers';
 // for developing against the actual cloned Dr. Tewari voice.
 const DEFAULT_SERVERS = {
   servers: [
-    { name: 'Kokoro (cloud)', url: 'https://adityakiwi--kokoro-tts-kokoroserver-web.modal.run' },
+    { name: 'Voice (cloud)', url: 'https://adidix99--voice-tts.modal.run' },
     { name: 'Local (dev)', url: 'http://localhost:8000' },
   ],
 };

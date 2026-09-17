@@ -1,2 +1,8 @@
 name = "epsa-admin-dashboard"
 pages_build_output_dir = "dist"
+
+# Written by the epsa-security-monitor Worker (security-monitor/); read by
+# functions/security-findings.js for the Security tab.
+[[kv_namespaces]]
+binding = "SECURITY_KV"
+id = "89e8d49e42064986b734e203779c7866"

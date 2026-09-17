@@ -1,26 +1,31 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { LogOut, LayoutDashboard, MonitorSmartphone, Calculator, Database, ShieldCheck, FlaskConical, Settings, ClipboardCheck } from 'lucide-react';
+import { LogOut, LayoutDashboard, MonitorSmartphone, Calculator, Database, ShieldCheck, FlaskConical, Settings, ClipboardCheck, Boxes, ShieldAlert } from 'lucide-react';
 import { isTursoConfigured, fetchScreeningSessions, fetchScreeningStats } from '../services/tursoService.js';
 import { fetchCalculatorSessions } from '../services/firebaseService.js';
 import { isRedcapConfigured, fetchRedcapRecords } from '../services/redcapService.js';
+import { isTwinConfigured, fetchTwinCases, fetchTwinStats } from '../services/twinService.js';
 import OverviewTab    from './tabs/OverviewTab.jsx';
 import ScreeningTab   from './tabs/ScreeningTab.jsx';
+import TwinTab        from './tabs/TwinTab.jsx';
 import CalculatorTab  from './tabs/CalculatorTab.jsx';
 import RedcapTab      from './tabs/RedcapTab.jsx';
 import VVPanel        from './tabs/VVPanel.jsx';
 import ResearchTab    from './tabs/ResearchTab.jsx';
 import SettingsTab    from './tabs/SettingsTab.jsx';
 import TestingTab     from './tabs/TestingTab.jsx';
+import SecurityTab    from './tabs/SecurityTab.jsx';
 import './UnifiedDashboard.css';
 
 const TABS = [
   { id: 'overview',   label: 'Overview',                  Icon: LayoutDashboard },
   { id: 'screening',  label: 'Screening (Turso)',          Icon: MonitorSmartphone },
+  { id: 'twin',       label: 'Digital Twin',               Icon: Boxes },
   { id: 'calculator', label: 'Calculator (Firebase)',       Icon: Calculator },
   { id: 'redcap',     label: 'REDCap Sinai',               Icon: Database },
   { id: 'vv',         label: 'Verification & Validation',  Icon: ShieldCheck },
   { id: 'testing',    label: 'Physician Testing',          Icon: ClipboardCheck },
   { id: 'research',   label: 'Research',                   Icon: FlaskConical },
+  { id: 'security',   label: 'Security',                   Icon: ShieldAlert },
   { id: 'settings',   label: 'Settings',                   Icon: Settings },
 ];
 
@@ -49,11 +54,19 @@ export default function UnifiedDashboard({ onLogout }) {
   const [redcapLoading, setRedcapLoading] = useState(false);
   const [redcapError,   setRedcapError]   = useState(null);
 
+  // Digital Twin (separate Turso DB)
+  const [twinCases,      setTwinCases]      = useState([]);
+  const [twinStats,      setTwinStats]      = useState(null);
+  const [twinConfigured, setTwinConfigured] = useState(null);
+  const [twinLoading,    setTwinLoading]    = useState(false);
+  const [twinError,      setTwinError]      = useState(null);
+
   // Source health: 'loading' | 'ok' | 'error' | 'off'
   const [sourceStatus, setSourceStatus] = useState({
     turso:    initStatus(isTursoConfigured()),
     firebase: 'loading',
     redcap:   initStatus(isRedcapConfigured()),
+    twin:     initStatus(isTwinConfigured()),
   });
 
   const loadScreening = useCallback(async () => {
@@ -114,11 +127,31 @@ export default function UnifiedDashboard({ onLogout }) {
     }
   }, []);
 
+  const loadTwin = useCallback(async () => {
+    setTwinLoading(true);
+    setTwinError(null);
+    try {
+      const [casesRes, stats] = await Promise.all([fetchTwinCases(), fetchTwinStats()]);
+      setTwinCases(casesRes.cases ?? []);
+      setTwinStats(stats);
+      const configured = casesRes.configured !== false && stats.configured !== false;
+      setTwinConfigured(configured);
+      setSourceStatus((s) => ({ ...s, twin: configured ? 'ok' : 'off' }));
+    } catch (e) {
+      console.error('Twin load error:', e);
+      setTwinError(e.message);
+      setSourceStatus((s) => ({ ...s, twin: 'error' }));
+    } finally {
+      setTwinLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadScreening();
     loadCalculator();
     loadRedcap();
-  }, [loadScreening, loadCalculator, loadRedcap]);
+    loadTwin();
+  }, [loadScreening, loadCalculator, loadRedcap, loadTwin]);
 
   return (
     <div className="dash-root">
@@ -151,6 +184,7 @@ export default function UnifiedDashboard({ onLogout }) {
           <OverviewTab
             screeningStats={screeningStats}
             calcSessions={calcSessions}
+            twinStats={twinStats}
             sourceStatus={sourceStatus}
           />
         )}
@@ -161,6 +195,15 @@ export default function UnifiedDashboard({ onLogout }) {
             loading={screeningLoading}
             error={screeningError}
             onRefresh={loadScreening}
+          />
+        )}
+        {tab === 'twin' && (
+          <TwinTab
+            cases={twinCases}
+            configured={twinConfigured}
+            loading={twinLoading}
+            error={twinError}
+            onRefresh={loadTwin}
           />
         )}
         {tab === 'calculator' && (
@@ -182,6 +225,7 @@ export default function UnifiedDashboard({ onLogout }) {
         {tab === 'vv' && <VVPanel />}
         {tab === 'testing' && <TestingTab />}
         {tab === 'research' && <ResearchTab />}
+        {tab === 'security' && <SecurityTab />}
         {tab === 'settings' && <SettingsTab />}
       </main>
     </div>
