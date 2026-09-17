@@ -60,6 +60,7 @@ const PROBES = [
   { name: 'Firestore: anonymous list users', url: 'https://firestore.googleapis.com/v1/projects/epsa-30d0b/databases/(default)/documents/users?pageSize=1', ok: (s) => s === 403 || s === 401 },
   { name: 'Functions: submitToRedcap unauthenticated', url: `${FN}/submitToRedcap`, init: JSON_POST({ data: {} }), ok: (s) => s === 401 },
   { name: 'Functions: adminListSinaiSessions unauthenticated', url: `${FN}/adminListSinaiSessions`, init: JSON_POST({ data: {} }), ok: (s) => s === 403 || s === 401 },
+  { name: 'Voice server: synthesis without sign-in', url: 'https://adityakiwi--kokoro-tts-kokoroserver-web.modal.run/voice/audio', init: JSON_POST({ text: '.' }), timeoutMs: 60000, ok: (s) => s === 401 },
   { name: 'Functions: listSessionsForAdmin unauthenticated', url: `${FN}/listSessionsForAdmin`, init: JSON_POST({ data: {} }), ok: (s) => s === 401 || s === 403 },
 ];
 
@@ -120,7 +121,7 @@ async function probe(env, { raise, check }) {
     try {
       const target = p.binding ? env[p.binding] : globalThis;
       if (!target) { check({ name: p.name, ok: false, detail: `binding ${p.binding} missing` }); return; }
-      const res = await target.fetch(p.url, { ...p.init, signal: AbortSignal.timeout(15000) });
+      const res = await target.fetch(p.url, { ...p.init, signal: AbortSignal.timeout(p.timeoutMs || 15000) });
       status = res.status;
       loc = res.headers.get('Location') || '';
       type = res.headers.get('Content-Type') || '';
@@ -203,7 +204,9 @@ async function auditTraffic(env, { raise, check }) {
   const total = rows.reduce((n, r) => n + r.count, 0);
   check({ name: 'Cloudflare traffic log audit', ok: true, detail: `${total} requests in the last hour` });
 
-  const sinai = (ip) => ip.startsWith(SINAI_V4_PREFIX);
+  // Cloudflare's own egress (2a06:98c0::/29) is Workers calling other routes —
+  // including this monitor's probes — not a person.
+  const sinai = (ip) => ip.startsWith(SINAI_V4_PREFIX) || /^2a06:98c[0-7]:/i.test(ip);
   const denials = new Map();
   let scans = 0;
   for (const { count, dimensions: r } of rows) {
@@ -301,6 +304,30 @@ async function auditFirebase(env, { raise, check }) {
       raise({ id: `firebase:rules-changed:${svc}:${hash.slice(0, 12)}`, severity: 'medium', title: `${svc === 'storage' ? 'Storage' : 'Firestore'} rules were redeployed`, detail: `Ruleset ${rel.rulesetName.split('/').pop()} (updated ${rel.updateTime}). Review the change.` });
     }
     state[key] = hash;
+  }
+
+  // App Check: both apps registered with an attestation provider, and
+  // enforcement status on Firestore / Auth.
+  const appBase = `https://firebaseappcheck.googleapis.com/v1/projects/${sa.project_id}/apps`;
+  const webApp = '1:148985999968:web:2c49caf6875ca31f348905';
+  const iosApp = '1:148985999968:ios:92cf8fd3928be0ae348905';
+  const [recaptcha, attest, services] = await Promise.all([
+    g(`${appBase}/${webApp}/recaptchaEnterpriseConfig`).catch(() => null),
+    g(`${appBase}/${iosApp}/appAttestConfig`).catch(() => null),
+    g(`https://firebaseappcheck.googleapis.com/v1/projects/${sa.project_id}/services`).catch(() => ({ services: [] })),
+  ]);
+  check({ name: 'App Check: web app uses reCAPTCHA Enterprise', ok: Boolean(recaptcha?.siteKey), detail: recaptcha?.siteKey ? 'registered' : 'NOT registered' });
+  check({ name: 'App Check: iOS app uses App Attest', ok: Boolean(attest?.name), detail: attest?.name ? 'registered' : 'NOT registered' });
+  if (!recaptcha?.siteKey || !attest?.name) {
+    raise({ id: 'appcheck:unregistered', severity: 'high', title: 'An app is missing its App Check provider', detail: `Web reCAPTCHA Enterprise: ${recaptcha?.siteKey ? 'ok' : 'missing'}; iOS App Attest: ${attest?.name ? 'ok' : 'missing'}.` });
+  }
+  const enforced = new Map((services.services || []).map((sv) => [sv.name.split('/').pop(), sv.enforcementMode]));
+  for (const svc of ['firestore.googleapis.com', 'identitytoolkit.googleapis.com']) {
+    const mode = enforced.get(svc) || 'UNENFORCED';
+    check({ name: `App Check enforcement: ${svc.split('.')[0]}`, ok: mode === 'ENFORCED', detail: mode });
+    if (mode !== 'ENFORCED') {
+      raise({ id: `appcheck:unenforced:${svc}`, severity: 'medium', title: `App Check not enforced on ${svc.split('.')[0]}`, detail: 'Requests that are not from the genuine web or iOS app are still accepted. Enforce once App Check metrics show legitimate traffic is verified.' });
+    }
   }
 
   // Cloud Functions inventory.
