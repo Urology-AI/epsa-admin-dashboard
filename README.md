@@ -46,6 +46,7 @@ Copy `.env.example` → `.env.local` and fill in:
 | `VITE_TURSO_URL` | Turso dashboard or screening-tool `.env` |
 | `VITE_TURSO_AUTH_TOKEN` | Turso dashboard or screening-tool `.env` |
 | `TWIN_API_URL` | Optional. Digital twin origin whose Worker serves `/api/turso/execute`; defaults to `https://digital-twin.urology.edu.eu.org`. Runtime-only, not a `VITE_` var. |
+| `TWIN_API_TOKEN` | Must match the twin Worker's `DASHBOARD_READ_TOKEN` secret. Runtime-only. |
 | `VITE_REDCAP_PROXY_URL` | Deployed Cloudflare Worker URL |
 | `VITE_DASHBOARD_SECRET` | Must match `wrangler secret put DASHBOARD_SECRET` on the worker |
 | `VITE_FIREBASE_*` | Copy from e-psa-calculator frontend `.env` |
