@@ -304,3 +304,46 @@
   transition: transform 0.15s;
 }
 .settings-toggle--on .settings-toggle-knob { transform: translateX(18px); }
+
+/* ── Calculator activity ── */
+.activity-panel { margin-bottom: 2rem; }
+.activity-controls { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.activity-sep { color: var(--text-muted); font-size: 0.8rem; }
+.activity-preset {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+}
+.activity-preset:hover  { color: var(--text); }
+.activity-preset.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.activity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem;
+}
+.activity-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.2rem;
+  min-width: 0;
+}
+.activity-card-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin: 0 0 0.75rem;
+}
+.activity-bars { display: flex; flex-direction: column; gap: 0.45rem; max-height: 320px; overflow-y: auto; }
+.activity-bar-row { display: grid; grid-template-columns: minmax(0, 9rem) 1fr 2.5rem; align-items: center; gap: 0.6rem; font-size: 0.78rem; }
+.activity-bar-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.activity-bar-value { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.activity-countries { font-size: 0.72rem; color: var(--text-muted); margin: 0.75rem 0 0; }
+.date-group-row td { background: var(--surface2); }
+.date-group-meta { margin-left: 0.75rem; font-size: 0.75rem; color: var(--text-muted); }
