@@ -289,7 +289,7 @@ async function auditFirebase(env, { raise, check }) {
     const src = (await g(`https://firebaserules.googleapis.com/v1/${rel.rulesetName}`)).source.files.map((f) => f.content).join('\n');
     const hash = await sha256(src);
     if (svc === 'firestore') {
-      const hasVerified = /email_verified\s*==\s*true/.test(src);
+      const hasVerified = /email_verified['"]?(,\s*false\))?\s*==\s*true/.test(src);
       check({ name: 'Firestore rules require verified admin email', ok: hasVerified, detail: hasVerified ? 'present' : 'MISSING' });
       if (!hasVerified) raise({ id: 'firebase:rules-unverified-admin', severity: 'critical', title: 'Firestore rules no longer require a verified admin email', detail: 'isSuperAdmin() must check request.auth.token.email_verified == true.' });
       if (/allow\s+read[^;]*:\s*if\s+true/.test(src.replace(/match \/appConfig[\s\S]*?\n    }/, ''))) {
