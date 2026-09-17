@@ -7,8 +7,8 @@
  *   TURSO_AUTH_TOKEN — Turso auth token (read-only recommended)
  */
 
-function toHttps(url) {
-  return url.replace(/^libsql:\/\//, 'https://');
+function tursoUrl(env) {
+  return env.TURSO_URL.replace(/^libsql:\/\//, 'https://');
 }
 
 function parseValue(v) {
@@ -24,13 +24,9 @@ function parseValue(v) {
  * @param {object} env  - CF env with TURSO_URL + TURSO_AUTH_TOKEN
  * @param {string} sql
  * @param {Array}  args - positional args as Turso typed values or plain JS values
- * @param {{ url?: string, token?: string }} [db] - override which database to
- *   hit (e.g. the digital twin's separate Turso DB). Defaults to env.TURSO_*.
  * @returns {Promise<{ columns: string[], rows: object[] }>}
  */
-export async function tursoQuery(env, sql, args = [], db = {}) {
-  const dbUrl   = db.url   || env.TURSO_URL;
-  const dbToken = db.token || env.TURSO_AUTH_TOKEN;
+export async function tursoQuery(env, sql, args = []) {
   const typedArgs = args.map((a) => {
     if (a === null || a === undefined) return { type: 'null',    value: null };
     if (typeof a === 'number' && Number.isInteger(a)) return { type: 'integer', value: String(a) };
@@ -38,10 +34,10 @@ export async function tursoQuery(env, sql, args = [], db = {}) {
     return { type: 'text', value: String(a) };
   });
 
-  const res = await fetch(`${toHttps(dbUrl)}/v2/pipeline`, {
+  const res = await fetch(`${tursoUrl(env)}/v2/pipeline`, {
     method: 'POST',
     headers: {
-      Authorization:  `Bearer ${dbToken}`,
+      Authorization:  `Bearer ${env.TURSO_AUTH_TOKEN}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({

@@ -1,15 +1,15 @@
 /**
  * Cloudflare Pages Function — GET /twin-stats
  *
- * Aggregate counts from the Digital Twin's case_log (separate Turso DB).
+ * Aggregate counts from the Digital Twin's case_log (via the twin's Worker).
  * Requires a valid Microsoft MSAL ID token in the Authorization header.
  *
  * Server-side env vars: AZURE_CLIENT_ID, AZURE_TENANT_ID,
- *   TWIN_TURSO_URL, TWIN_TURSO_AUTH_TOKEN
+ *   TWIN_API_URL (optional, see _twin.js)
  */
 
 import { verifyMsalToken, unauthorized } from './_auth.js';
-import { tursoQuery }                    from './_turso.js';
+import { fetchTwinCaseLog }              from './_twin.js';
 
 const JSON_CT = { 'Content-Type': 'application/json' };
 
@@ -21,26 +21,15 @@ export async function onRequestGet({ env, request }) {
   const user = await verifyMsalToken(request.headers.get('Authorization'), env);
   if (!user) return unauthorized();
 
-  if (!env.TWIN_TURSO_URL || !env.TWIN_TURSO_AUTH_TOKEN) {
-    return new Response(JSON.stringify({ configured: false }), {
-      status: 200, headers: JSON_CT,
-    });
-  }
-
-  const db = { url: env.TWIN_TURSO_URL, token: env.TWIN_TURSO_AUTH_TOKEN };
-
   try {
-    const [total, week, withPath] = await Promise.all([
-      tursoQuery(env, 'SELECT COUNT(*) AS n FROM case_log', [], db),
-      tursoQuery(env, "SELECT COUNT(*) AS n FROM case_log WHERE date >= date('now', '-7 days')", [], db),
-      tursoQuery(env, 'SELECT COUNT(*) AS n FROM case_log WHERE path_gg IS NOT NULL AND path_gg != 0', [], db),
-    ]);
+    const rows = await fetchTwinCaseLog(env);
+    const weekAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString().slice(0, 10);
 
     return new Response(JSON.stringify({
       configured:    true,
-      total:         total.rows[0].n,
-      thisWeek:      week.rows[0].n,
-      withPathology: withPath.rows[0].n,
+      total:         rows.length,
+      thisWeek:      rows.filter((r) => r.date >= weekAgo).length,
+      withPathology: rows.filter((r) => r.path_gg != null && Number(r.path_gg) !== 0).length,
     }), { status: 200, headers: JSON_CT });
   } catch (err) {
     return new Response(JSON.stringify({ error: err.message }), {

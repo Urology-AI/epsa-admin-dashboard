@@ -79,8 +79,8 @@ export default function TwinTab({ cases, configured, loading, error, onRefresh }
             <WifiOff size={16} /> Digital Twin source not configured
           </p>
           <p className="error-hint" style={{ marginTop: '0.4rem' }}>
-            Set <code>TWIN_TURSO_URL</code> and <code>TWIN_TURSO_AUTH_TOKEN</code> (the twin's own
-            Turso database — separate from the screening tool) as Cloudflare Pages environment variables.
+            Check <code>TWIN_API_URL</code> points at the digital twin site whose Worker serves
+            <code>/api/turso/execute</code>.
           </p>
         </div>
       )}

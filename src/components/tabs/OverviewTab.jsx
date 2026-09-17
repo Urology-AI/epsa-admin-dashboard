@@ -86,7 +86,7 @@ export default function OverviewTab({ screeningStats, calcSessions, twinStats, s
           )}
           {sourceStatus.twin === 'error' && (
             <p className="error-hint">
-              Digital Twin: set <code>TWIN_TURSO_URL</code> and <code>TWIN_TURSO_AUTH_TOKEN</code> as Cloudflare Pages env vars.
+              Digital Twin: could not reach the twin's Worker API — check <code>TWIN_API_URL</code>.
             </p>
           )}
         </div>

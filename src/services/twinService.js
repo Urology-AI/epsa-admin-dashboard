@@ -1,6 +1,5 @@
 // Digital Twin pre-operative planning cases, via server-side Pages Functions
-// (/twin-cases, /twin-stats). The twin uses its OWN Turso database, separate
-// from the screening tool's — credentials (TWIN_TURSO_*) never leave the server.
+// (/twin-cases, /twin-stats), which read through the twin's own Worker API.
 
 import { getAuthHeader } from './auth.js';
 
