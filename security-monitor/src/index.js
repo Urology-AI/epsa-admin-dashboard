@@ -54,7 +54,7 @@ const PROBES = [
   { name: 'Functions: submitToRedcap unauthenticated', url: `${FN}/submitToRedcap`, init: JSON_POST({ data: {} }), ok: (s) => s === 401 },
   ...['adminListSinaiSessions', 'adminLogin', 'sendAdminOTP', 'getDecryptedPhone', 'exportSessionsCSV']
     .map((f) => ({ name: `Deleted function stays gone: ${f}`, url: `${FN}/${f}`, init: JSON_POST({ data: {} }), ok: (s) => s === 404 })),
-  { name: 'Voice server: synthesis without sign-in', url: 'https://adityakiwi--kokoro-tts-kokoroserver-web.modal.run/voice/audio', init: JSON_POST({ text: '.' }), timeoutMs: 60000, ok: (s) => s === 401 },
+  { name: 'Voice server: synthesis without sign-in', url: 'https://adidix99--voice-tts.modal.run/voice/audio', init: JSON_POST({ text: '.' }), timeoutMs: 60000, ok: (s) => s === 401 },
 ];
 
 export default {
